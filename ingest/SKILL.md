@@ -103,8 +103,14 @@ Format decision: Extract wide (one row per provider per year, 116 columns).
 Unpivot to long format in the silver SQL model.
 ```
 
+**Pushback guidance:** Don't just present what's in the file. Challenge the design:
+- "This has 15 metric columns — should they be unpivoted in extraction or in SQL? I recommend SQL (Principle #3) because [specific reason]."
+- "These 3 columns are derivable from other columns. I'd exclude them (Principle #7). Here's the math: [show it]."
+- "You asked for 5 groups but I think 1 group with era handling is simpler. Here's why."
+- If the user asks for something complex, propose the simpler version and make your case. Don't just comply.
+
 ### ⛔ GATE 2 STOP
-Schema design is a conversation (Principle #8). Present the schema proposal with tradeoffs. Expect pushback. Do NOT proceed until the human approves the schema.
+Schema design is a conversation (Principle #8). Present the schema proposal with tradeoffs. Take a position. Expect pushback — that's the point. Do NOT proceed until the human approves the schema.
 
 ---
 
@@ -260,6 +266,10 @@ cat > ~/.soria-stack/artifacts/ingest-$(date +%Y%m%d-%H%M%S).md << 'ARTIFACT'
 
 ## Open Questions
 [Anything that needs human decision before /model can start]
+
+## Outcome
+Status: [DONE | DONE_WITH_CONCERNS | BLOCKED | NEEDS_CONTEXT]
+Lesson: [What was interesting or unexpected]
 ARTIFACT
 ```
 

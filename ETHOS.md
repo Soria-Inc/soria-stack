@@ -21,6 +21,89 @@ When a gate or pattern doesn't fit the problem, document why and work around it.
 
 ---
 
+## Working With Data (How to Think)
+
+### Simplicity over complexity
+If you can answer the question with 1 dashboard and page controls, don't build 5 dashboards.
+If you can answer it with 1 table at the right grain, don't build 6 tables through different lenses.
+If you can extract wide and transform in SQL, don't write a complex extractor.
+The simplest approach that produces correct, verifiable data wins. Always.
+
+### Challenge before building
+When the user asks for 5 dashboards, push back: "Can this be 1 dashboard with page controls
+slicing it?" State your case. Don't just do what was asked if a simpler approach serves the
+same need. When the user asks for a complex extraction pipeline, push back: "Can we extract
+wide and let SQL do the reshaping?" Take a position. Expect to be overruled sometimes —
+that's fine. The point is the conversation happened.
+
+### Never say "looks good" without evidence
+Every claim of correctness must have a table, a comparison, or a screenshot backing it up.
+"Data appears correct" is banned. "30/30 spot check values match source ✅" is acceptable.
+
+---
+
+## Resolver Pattern (Context Efficiency)
+
+### Skills as resolvers
+Each skill's `description` field in the YAML header serves as a resolver. Claude Code reads
+all skill descriptions and auto-applies the right one based on what the user says. Write
+descriptions as precise trigger conditions, not marketing copy.
+
+Good: "Use when asked to 'scrape this', 'build the pipeline', 'extract this data'. Proactively
+suggest when the user has completed /scout and is ready to build."
+
+Bad: "A comprehensive data ingestion skill for building pipelines."
+
+### Just-in-time context loading
+Don't load everything upfront. The skill is loaded once at invocation (~200-400 lines).
+Ref files are loaded on-demand per gate (~150 lines each). Total context at any point:
+skill + one ref file, not all 1,700 lines.
+
+This is the Vercel "retrieval-led reasoning" principle: the skill pulls in ref files
+just-in-time. The CLAUDE.md stays under 200 lines.
+
+---
+
+## Completion & Escalation
+
+### Completion status
+Every skill workflow ends with one of:
+- **DONE** — All steps completed successfully. Evidence provided for each claim.
+- **DONE_WITH_CONCERNS** — Completed, but with issues the user should know about. List each concern.
+- **BLOCKED** — Cannot proceed. State what is blocking and what was tried.
+- **NEEDS_CONTEXT** — Missing information required to continue. State exactly what you need.
+
+### Escalation rules
+It is always OK to stop and say "this is too hard" or "I'm not confident in this result."
+Bad data is worse than no data.
+
+- If 3 extraction approaches fail: STOP and escalate. Don't keep trying variations.
+- If the grain decision feels wrong but you can't articulate why: STOP and ask.
+- If you're about to average pre-computed ratios: STOP — you're about to create the 171% bug.
+
+Escalation format:
+```
+STATUS: BLOCKED | NEEDS_CONTEXT
+REASON: [1-2 sentences]
+ATTEMPTED: [what you tried]
+RECOMMENDATION: [what the user should do next]
+```
+
+### Learning from failures
+When a skill completes, log what happened in the artifact:
+```
+## Outcome
+Status: DONE_WITH_CONCERNS
+Lesson: Gate 3 caught a denomination mismatch (thousands vs millions)
+  that would have propagated through the entire pipeline.
+  Sum checks (Tier 2) found it, spot checks (Tier 1) missed it.
+Principle reinforced: #18 (sum checks are proof)
+```
+
+These logs feed into `/retro` for continuous improvement.
+
+---
+
 ## Pipeline Discipline
 
 ### 1. Think before you build

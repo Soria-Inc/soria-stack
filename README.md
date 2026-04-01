@@ -28,15 +28,18 @@ Each skill feeds into the next. `/scout` writes a recon doc that `/ingest` reads
 
 | Skill | Your specialist | What they do |
 |-------|----------------|-------------|
-| `/scout` | Data Recon Analyst | Understand sources, design analytical architecture, classify effort. Prevents building the wrong thing. |
+| `/scout` | Data Recon Analyst | Understand sources, design analytical architecture, classify effort. Scope modes: EXPANSION / HOLD / REDUCTION. |
 | `/ingest` | Pipeline Builder | Scrape, organize, extract, map, and publish data through six hard-stop gates. |
-| `/model` | SQL Model Designer | Build bronze → silver → gold → platinum models. Forces grain-first thinking. |
-| `/verify` | Paranoid Verifier | Three-tier verification: spot checks (evidence), sum checks (proof), derived metrics (gold standard). |
+| `/profile` | Data Quality Inspector | 4 parallel checks on raw data: schema, distributions, outliers, NULLs. Run before writing SQL. |
+| `/model` | SQL Model Designer | Build bronze → silver → gold → platinum models. Forces grain-first thinking. Simplicity-first. |
+| `/verify` | Paranoid Verifier | Four modes: pipeline verify, model verify, analytical verify, SQL review. Never says "looks good" without evidence. |
 | `/newsroom` | News Pipeline Operator | Branch management, prompt tuning, source review, event clustering. Separate domain, separate tools. |
+| `/retro` | Retrospective Analyst | Reviews recent work, finds patterns, proposes principle updates. The continuous improvement loop. |
 
 ## Principles
 
-All 25 data principles live in `ETHOS.md`. Every skill references them. They are
+All 27 data principles plus the resolver pattern, completion protocol, and
+anti-sycophancy guidance live in `ETHOS.md`. Every skill references them. They are
 the source of truth for how Soria thinks about data.
 
 ## Architecture

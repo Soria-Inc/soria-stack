@@ -1,12 +1,15 @@
 ---
 name: soria-stack
-version: 2.0.0
+version: 2.1.0
 description: |
-  Data pipeline skills for Soria Analytics. Five cognitive modes for data work:
-  /scout (understand before building), /ingest (pipeline with gates), /model
-  (grain-first SQL), /verify (prove it with evidence), /newsroom (news pipeline ops).
-  Suggest the right skill by stage: understanding a source /scout; building a pipeline
-  /ingest; designing SQL models /model; verifying data /verify; news pipeline /newsroom.
+  Data pipeline skills for Soria Analytics. Seven cognitive modes for data work:
+  /scout (understand before building), /ingest (pipeline with gates), /profile
+  (inspect data quality), /model (grain-first SQL), /verify (prove it with evidence
+  + SQL review), /newsroom (news pipeline ops), /retro (learn from what happened).
+  Suggest the right skill by stage: understanding a source → /scout; building a pipeline
+  → /ingest; inspecting data quality → /profile; designing SQL models → /model;
+  verifying data or reviewing SQL → /verify; news pipeline → /newsroom;
+  reviewing recent work → /retro.
 allowed-tools:
   - Read
   - Bash
@@ -22,11 +25,11 @@ echo "Recent artifacts:"
 ls -t ~/.soria-stack/artifacts/*.md 2>/dev/null | head -5 || echo "  (none)"
 ```
 
-Read `ETHOS.md` before any data pipeline work. All 27 principles apply.
+Read `ETHOS.md` before any data pipeline work. All principles apply.
 
 # SoriaStack — Data Pipeline Skills
 
-Five cognitive modes for data pipeline work. Each sets how to think, when to stop,
+Seven cognitive modes for data pipeline work. Each sets how to think, when to stop,
 and what to verify.
 
 ## Skill routing
@@ -35,14 +38,19 @@ and what to verify.
 |-------------------|---------|
 | Exploring a new data source | `/scout` |
 | Ready to build after scouting | `/ingest` |
+| Looking at data before writing SQL | `/profile` |
 | Building SQL models on existing data | `/model` |
 | Checking if data is correct | `/verify` |
+| Reviewing SQL quality | `/verify` (Mode 4) |
 | Working with the news pipeline | `/newsroom` |
+| Reviewing recent work for lessons | `/retro` |
 
 ## The sequence
 
 ```
-/scout → /ingest → /model → /verify
+/scout → /ingest → /profile → /model → /verify
+                                          ↓
+                                       /retro (periodic)
 ```
 
 Each skill produces an artifact that the next skill consumes.
@@ -50,6 +58,7 @@ Don't skip steps — every pipeline that went poorly started with the AI buildin
 
 ## Quick reference
 
-- **27 principles** in `ETHOS.md` — the source of truth
+- **Principles** in `ETHOS.md` — the source of truth (includes resolver pattern, completion protocol, anti-sycophancy)
 - **Artifacts** in `~/.soria-stack/artifacts/` — state passed between skills
 - **Gates** in every skill — hard stops where the human must review and approve
+- **Completion status** — every skill ends with DONE / DONE_WITH_CONCERNS / BLOCKED / NEEDS_CONTEXT
