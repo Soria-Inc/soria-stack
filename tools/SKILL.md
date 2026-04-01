@@ -2,12 +2,14 @@
 name: tools
 version: 1.0.0
 description: |
-  Load the Soria data platform tools. Run this FIRST before any data pipeline
-  work — /scout, /ingest, /profile, /model, /verify, /newsroom all depend on
-  MCP tools that must be discovered before use. Searches for all available
-  Sumo, news, and pipeline tools via ToolSearch.
-  Proactively suggest when the user starts any data work and tools haven't been
-  loaded yet. Required before calling any sumo_*, news_*, or pipeline MCP tools.
+  Load the Soria data platform MCP tools into the session. You MUST run /tools
+  before calling ANY Sumo MCP tool (sumo_*, news_*, scrape_*, extract_*,
+  schema_*, warehouse_*, dashboard_*, value_*) for the first time in a session.
+  Without /tools, these MCP tools are deferred and cannot be invoked.
+  Proactively run this — do not wait for the user to ask. If the user asks you
+  to do anything involving the Soria data platform, pipelines, scrapers,
+  schemas, extractions, dashboards, or warehouse, run /tools immediately before
+  attempting any MCP tool calls. This is a hard prerequisite, not a suggestion.
 allowed-tools:
   - ToolSearch
 ---
