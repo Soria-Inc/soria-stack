@@ -1,11 +1,16 @@
 ---
 name: verify
-version: 1.0.0
-description: >
+version: 2.0.0
+description: |
   Three-tier verification: spot checks (evidence), sum checks (proof),
   derived metric checks (gold standard). Also handles pipeline verification
   (extraction vs source) and model verification (tracing values through layers).
   Never says "looks good" without showing evidence.
+  Use when asked to "verify this", "is this data correct", "check the pipeline",
+  "prove it", or "validate the model".
+  Proactively suggest after /ingest Gate 6 or after /model completes.
+  Use after /ingest or /model.
+benefits-from: [ingest, model]
 allowed-tools:
   - sumo_*
   - exa_*
@@ -13,13 +18,30 @@ allowed-tools:
   - web_fetch
   - Read
   - Bash
+  - AskUserQuestion
+---
+
+## Preamble (run first)
+
+```bash
+mkdir -p ~/.soria-stack/artifacts
+_BRANCH=$(git branch --show-current 2>/dev/null || echo "unknown")
+echo "BRANCH: $_BRANCH"
+echo "SKILL: verify"
+echo "---"
+echo "Checking for prior artifacts..."
+ls -t ~/.soria-stack/artifacts/ingest-*.md ~/.soria-stack/artifacts/model-*.md 2>/dev/null | head -5
+```
+
+Read `ETHOS.md` from this skill pack. Key principles for /verify: #10, #11, #17, #18, #19, #20.
+
+**Check for prior work:** If ingest or model artifacts exist, read them — they have the table names, schemas, and expected relationships.
+
 ---
 
 # /verify — "Prove it"
 
 You are a paranoid data verifier. You NEVER say "looks good" or "data appears correct" without showing evidence. Your job is to build the case — with tables, comparisons, and math — that the data is either correct or wrong.
-
-**Read `principles.md` first.** Key principles: #10, #11, #17, #18, #19, #20.
 
 You have three verification modes and three verification tiers. Use the appropriate mode based on what you're verifying. Always escalate through tiers — don't stop at Tier 1 if Tier 2 or 3 are possible.
 
@@ -40,16 +62,13 @@ You have three verification modes and three verification tiers. Use the appropri
    - Show the comparison:
 
    ```
-   File: cms_hospital_cost_report_2024.csv
+   File: cms_hospital_cost_report_2024.csv (newest)
    Source: Original CSV from data.cms.gov
 
    | Row | Field | Source Value | Extracted Value | Match |
    |-----|-------|-------------|-----------------|-------|
    | CCN 050454 | net_patient_revenue | $1,234,567,890 | 1234567890 | ✅ |
    | CCN 050454 | number_of_beds | 382 | 382 | ✅ |
-   | CCN 100001 | total_costs | $89,432,101 | 89432101 | ✅ |
-   | CCN 100001 | fiscal_year_end | 09/30/2024 | 2024-09-30 | ✅ |
-   | ... | ... | ... | ... | ... |
 
    Result: 10/10 match ✅
    ```
@@ -65,11 +84,9 @@ You have three verification modes and three verification tiers. Use the appropri
    |------|--------------|----------------------|------|-------|
    | 2024 | 45,678,901 | 45,678,901 | 0 | ✅ |
    | 2020 | 38,234,567 | 38,234,567 | 0 | ✅ |
-   | 2015 | 29,876,543 | 29,876,543 | 0 | ✅ |
    ```
 
    - Sum checks that span multiple independently extracted values are stronger than single-value spot checks (Principle #18)
-   - One wrong denomination (thousands vs millions) immediately blows a sum check
 
 4. **If external data exists, run Tier 3 — Derived Metric Checks:**
    - Compute a derived metric from the extracted data
@@ -81,10 +98,6 @@ You have three verification modes and three verification tiers. Use the appropri
    | Year | Our MCR | UNH Press Release | Diff | Match |
    |------|---------|-------------------|------|-------|
    | 2024 | 85.5% | 85.5% | 0.0% | ✅ |
-   | 2023 | 83.2% | 83.2% | 0.0% | ✅ |
-
-   Why this matters: If MCR matches, BOTH medical_costs AND premiums
-   are independently proven correct AND correctly mapped to canonicals.
    ```
 
 ### Output
@@ -116,41 +129,30 @@ Confidence: HIGH — all three tiers pass
    | Layer | Table | Value | Correct? |
    |-------|-------|-------|----------|
    | Bronze | bronze.unh_10k_financials | 371622 (millions) | ✅ |
-   | Silver | silver.stg_unh_financials | metric='total_revenue', value=371622, unit='millions' | ✅ |
-   | Gold | gold.insurer_financials | total_revenue=371622000000 (scaled to dollars) | ✅ |
-   | Platinum | platinum.insurer_kpi_dashboard | revenue='$371.6B' (formatted) | ✅ |
+   | Silver | silver.stg_unh_financials | metric='total_revenue', value=371622 | ✅ |
+   | Gold | gold.insurer_financials | total_revenue=371622000000 (scaled) | ✅ |
+   | Platinum | platinum.insurer_kpi_dashboard | revenue='$371.6B' | ✅ |
    ```
 
 3. **Check for fan-out or fan-in bugs:**
-   - Does joining in gold multiply rows? (Check: `COUNT(*)` before and after join)
-   - Does dedup in silver drop too many rows? (Check: `COUNT(*)` vs `COUNT(DISTINCT natural_key)`)
+   - Does joining in gold multiply rows?
+   - Does dedup in silver drop too many rows?
    - Does aggregation in platinum collapse the right dimensions?
 
 4. **Verify ratio computation:**
    - Confirm ratios are computed AFTER aggregation, not averaged
-   - Test with a known example:
-
-   ```
-   Market Share Check:
-   - UNH MA enrollment: 8,234,567
-   - Total MA enrollment: 31,456,789
-   - Expected share: 26.2%
-   - Platinum shows: 26.2% ✅
-
-   NOT: average of per-plan-type shares (which would sum to >100%)
-   ```
+   - Test with a known example
 
 5. **Check temporal alignment in gold:**
    - Are the right time periods joined?
-   - Does "2026 star ratings" actually match to "October 2025 enrollment"?
 
 ### Output
 ```
 Model Verification: insurer_kpi_dashboard
 ├── Value Trace: 5/5 values correct through all layers ✅
-├── Row Counts: bronze(456K) → silver(5.4M unpivoted) → gold(5.4M) → plat(1.2M aggregated) ✅
+├── Row Counts: bronze(456K) → silver(5.4M) → gold(5.4M) → plat(1.2M) ✅
 ├── Fan-out Check: no duplicate rows from joins ✅
-├── Ratio Check: market_share computed at display grain, not averaged ✅
+├── Ratio Check: market_share computed at display grain ✅
 └── Temporal: star ratings correctly joined to October enrollment ✅
 
 Confidence: HIGH
@@ -160,49 +162,32 @@ Confidence: HIGH
 
 ## Mode 3: Analytical Verify
 
-**When to use:** After the dashboard is complete. This is the "does this actually make sense?" pass — the highest-level verification. Uses the data's own internal consistency plus external corroboration to prove correctness.
+**When to use:** After the dashboard is complete. The "does this actually make sense?" pass.
 
 ### Steps
 
 1. **Internal consistency checks:**
-   - Do parts sum to whole? (enrollment by segment = total enrollment)
-   - Do percentages sum to 100%? (market share across all companies in a month)
-   - Do trends make directional sense? (enrollment grew YoY when you'd expect growth)
-   - Are there impossible values? (negative enrollment, >100% market share, margins > 1000%)
+   - Do parts sum to whole?
+   - Do percentages sum to 100%?
+   - Do trends make directional sense?
+   - Are there impossible values?
 
    ```
    Internal Consistency: MA Enrollment Dashboard
    | Check | Result |
    |-------|--------|
-   | Market share sums to ~100% per month | 99.7-100.3% ✅ (rounding) |
+   | Market share sums to ~100% per month | 99.7-100.3% ✅ |
    | Individual + Group = Total per company | Exact match ✅ |
-   | YoY deltas consistent with absolute values | ✅ |
    | No negative enrollment | ✅ |
-   | No company with >50% share (sanity) | UNH at 28% — reasonable ✅ |
    ```
 
 2. **External corroboration:**
-   - Find an external source that independently reports the same or similar metric
-   - Compare your calculated value against the external reference:
-
-   ```
-   External Corroboration: UNH Government vs Commercial Mix
-
-   | Metric | Our Data | UNH 10-K | Match |
-   |--------|----------|----------|-------|
-   | 2024 Gov't membership | 19.8M | 19.8M | ✅ |
-   | 2024 Commercial membership | 29.7M | 29.7M | ✅ |
-   | Gov't as % of total | 40% | 40% | ✅ |
-
-   Source: UNH Annual Report page 43
-   ```
+   - Find an external source that independently reports the same metric
+   - Compare your calculated value against the external reference
 
 3. **The "does anything look off?" scan:**
-   - Look at the output tables with domain expert eyes
-   - Flag anything suspicious:
-     - "UHC sub-segments sum to $249.8B vs Total UHC $249.7B ✅ — within rounding"
-     - "Government % drops from 45.9% to 36.6% in one year ⚠️ — investigate: this is likely a data definition change (switched from total to domestic-only membership), not a real decline"
-     - "Medicare Advantage revenue shows $8.4B but Med&Ret segment is $171B ⚠️ — misleading label, this is supplemental only"
+   - Look at the output with domain expert eyes
+   - Flag anything suspicious with explanation
 
 4. **Present findings as a confidence assessment:**
 
@@ -213,10 +198,9 @@ Confidence: HIGH
    ├── Internal consistency: all checks pass ✅
    ├── External corroboration: 7/7 metrics match public filings ✅
    ├── Caveats:
-   │   ├── Pre-2019 cash flow data is parent-only, not consolidated (affects CFO/CFI/CFF)
-   │   ├── ~1,300 unmapped items remain (mostly notes detail — low impact on KPI metrics)
-   │   └── Government membership % pre-2021 includes international; post-2021 is domestic-only
-   └── Recommendation: Dashboard is publication-ready for 2019+ data. Pre-2019 cash flow metrics should be flagged or excluded.
+   │   ├── Pre-2019 cash flow data is parent-only, not consolidated
+   │   └── Government membership % pre-2021 includes international
+   └── Recommendation: Dashboard is publication-ready for 2019+ data.
    ```
 
 ---
@@ -229,11 +213,38 @@ Always escalate. Don't stop at Tier 1 when Tier 2 is possible.
 |------|---------------|----------|-------------|
 | **Tier 1: Spot Checks** | Individual values are correct | Evidence — necessary but not sufficient | Always (baseline) |
 | **Tier 2: Sum Checks** | Multiple independently extracted values are ALL correct and correctly denominated | Proof — algebraic consistency is hard to fake | When data has additive relationships |
-| **Tier 3: Derived Metrics** | Multiple values are correct AND correctly mapped to canonicals AND correctly combined | Gold standard — proves the entire pipeline | When external reference data exists |
+| **Tier 3: Derived Metrics** | Multiple values correct AND correctly mapped AND correctly combined | Gold standard — proves the entire pipeline | When external reference data exists |
 
-**Tier 2 is the most underrated.** If Revenue = Premiums + Products + Services + Investment across 10 years, four independently extracted line items are all correct. That's 40+ independent data points that all have to line up. One wrong denomination blows it immediately.
+**Tier 2 is the most underrated.** If Revenue = Premiums + Products + Services + Investment across 10 years, four independently extracted line items are all correct.
 
-**Tier 3 is the hardest to pass by accident.** If your computed Medical Care Ratio matches UNH's press release, both numerator (medical costs) and denominator (premiums) are proven correct through the entire pipeline — extraction, value mapping, SQL model, and aggregation.
+**Tier 3 is the hardest to pass by accident.** If your computed MCR matches UNH's press release, both numerator and denominator are proven correct through the entire pipeline.
+
+---
+
+## Artifact Output
+
+At the end of a verify session, write a verification scorecard:
+
+```bash
+cat > ~/.soria-stack/artifacts/verify-$(date +%Y%m%d-%H%M%S).md << 'ARTIFACT'
+# Verification Scorecard: [Dataset/Model Name]
+
+## Mode
+[Pipeline / Model / Analytical]
+
+## Tier Results
+[Which tiers were run, specific evidence for each]
+
+## Confidence
+[HIGH / MEDIUM / LOW with justification]
+
+## Caveats
+[What couldn't be verified and why]
+
+## Open Issues
+[Anything that needs investigation]
+ARTIFACT
+```
 
 ---
 
@@ -243,7 +254,7 @@ Verification is DONE when you can produce a scorecard that shows:
 1. Which tiers were run
 2. Specific evidence for each (tables, not just "looks good")
 3. What couldn't be verified and why
-4. A confidence level (HIGH / MEDIUM / LOW) with justification
+4. A confidence level with justification
 5. Any caveats or known issues
 
 **Never say "the data looks correct" without a scorecard.**
