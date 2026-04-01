@@ -2,14 +2,18 @@
 name: soria-stack
 version: 2.1.0
 description: |
-  Data pipeline skills for Soria Analytics. Seven cognitive modes for data work:
-  /scout (understand before building), /ingest (pipeline with gates), /profile
-  (inspect data quality), /model (grain-first SQL), /verify (prove it with evidence
-  + SQL review), /newsroom (news pipeline ops), /retro (learn from what happened).
-  Suggest the right skill by stage: understanding a source → /scout; building a pipeline
-  → /ingest; inspecting data quality → /profile; designing SQL models → /model;
-  verifying data or reviewing SQL → /verify; news pipeline → /newsroom;
-  reviewing recent work → /retro.
+  Data pipeline skills for Soria Analytics. IMPORTANT: Run /tools FIRST in every
+  session before using any other soria-stack skill or calling any Soria MCP tool.
+  The Soria MCP tools (sumo_*, news_*, mcp__sumo__*) are deferred at startup and
+  will fail unless /tools has loaded them via ToolSearch.
+  Eight cognitive modes: /tools (load MCP tools), /scout (understand before building),
+  /ingest (pipeline with gates), /profile (inspect data quality), /model (grain-first
+  SQL), /verify (prove it with evidence + SQL review), /newsroom (news pipeline ops),
+  /retro (learn from what happened).
+  Suggest the right skill by stage: starting a session → /tools; understanding a source
+  → /scout; building a pipeline → /ingest; inspecting data quality → /profile;
+  designing SQL models → /model; verifying data or reviewing SQL → /verify;
+  news pipeline → /newsroom; reviewing recent work → /retro.
 allowed-tools:
   - Read
   - Bash
