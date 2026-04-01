@@ -99,7 +99,27 @@ real world:
 - "What's the standard schema for [this CMS data]?"
 - "Known issues or quirks with [this data source]?"
 
-This grounds the plan in domain knowledge, not just file structure.
+### Earnings transcript grounding
+
+Search earnings call transcripts for how the data domain you're working on
+actually impacts companies and how analysts think about it. This is NOT
+"search for the company" — it's "search for the data topic across companies."
+
+Examples:
+- Working on **hospital utilization data** → search transcripts for "utilization
+  trends inpatient outpatient" to find which companies discuss it, what metrics
+  they track (adjusted discharges per calendar day, ED visits, length of stay),
+  and what drives analyst questions ("is the outpatient trend sustainable?")
+- Working on **Medicare Advantage enrollment** → search for "MA membership
+  growth market share competitive" to understand what dimensions analysts care
+  about (plan type, geography, star rating impact, new vs retained members)
+- Working on **medical cost trends** → search for "medical cost trend MLR
+  benefit expense" to see how companies frame cost pressure and what baseline
+  comparisons analysts expect (pre-COVID baselines, YoY trend)
+
+This tells you: what to prioritize scraping, what grain the dashboard needs,
+and what comparisons analysts will actually want. Use `search_context` with
+`source: "transcripts"` and relevant domain keywords (not company names).
 
 ### Source characterization
 

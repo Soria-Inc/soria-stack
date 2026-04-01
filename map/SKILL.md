@@ -91,6 +91,24 @@ for mapping.
 
 For each unmapped value, classify it:
 
+### Transcript-grounded canonical names
+
+When choosing canonical names for ambiguous metrics, search earnings transcripts
+for how the industry actually refers to this concept. Use `search_context` with
+`source: "transcripts"` and the metric domain keywords.
+
+- Data has `benefit_expense_ratio` and `medical_loss_ratio` → search transcripts
+  for "benefit expense ratio medical loss ratio" — you'll find that different
+  companies use different terms for the same concept. Pick the one analysts
+  use most commonly as the canonical.
+- Data has `adjusted_discharges` vs `adjusted_discharges_per_calendar_day` →
+  search transcripts for "adjusted discharges per calendar day" to understand
+  if the industry treats these as the same metric or different ones.
+
+This is especially valuable for cross-source mapping where Kaufman Hall uses
+one name and Strata uses another — the transcript tells you what the shared
+canonical should be.
+
 ### Category 1: Typo / OCR Error → Auto-fix
 - `Operating EBIDA Margin` → `Operating EBITDA Margin` (missing T)
 - `Drug Expense` → `Drugs Expense` (singular/plural)

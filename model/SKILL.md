@@ -51,16 +51,34 @@ You are a SQL model designer. Your job is to build bronze → silver → gold �
 
 ## Domain Grounding (before the Three Questions)
 
-Before designing the model, search for how analysts in this domain think about
-the data. Use Perplexity or Exa:
+Before designing the model, ground it in how the real world talks about this data.
 
-- "How do equity analysts evaluate [Medicare Advantage enrollment trends]?"
-- "What metrics do healthcare investors track for [hospital utilization]?"
-- "Standard KPIs for [insurance Medical Loss Ratio analysis]?"
+### Earnings transcript search
 
-This grounds your Question 1 (what question does this answer?) in how real
-analysts frame the problem, not just what columns exist in the data. Skip this
-step if the domain is already well-understood from prior sessions.
+Search transcripts for the data domain you're modeling — not "search for Humana"
+but "search for how utilization data gets discussed."
+
+- Building a **utilization dashboard** → search "utilization trends adjusted
+  discharges ED visits length of stay" across transcripts. You'll find the
+  exact metrics analysts ask about, how they frame YoY comparisons, and what
+  baseline periods they reference (e.g., "pre-COVID levels" as the standard).
+- Building an **MLR model** → search "medical loss ratio benefit expense trend
+  cost pressure" and you'll see how analysts decompose it (utilization vs unit
+  cost vs acuity vs new member drag) — that decomposition IS your grain design.
+- Building a **star ratings dashboard** → search "star ratings quality bonus
+  CMS performance" and you'll learn what dimensions matter (contract-level vs
+  member-weighted, bonus year timing, operational vs HEDIS measures).
+
+The transcript gives you Question 1 phrased the way an analyst would actually
+ask it, not how a data engineer would guess.
+
+### External research (Perplexity/Exa)
+
+Use Perplexity for broader domain grounding:
+- "Standard KPIs for [this analytical domain]?"
+- "How do equity analysts evaluate [this metric]?"
+
+Skip both steps if the domain is well-understood from prior sessions.
 
 ---
 

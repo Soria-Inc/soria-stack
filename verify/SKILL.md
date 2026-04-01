@@ -160,7 +160,22 @@ correctly through bronze → silver → gold → platinum.
      estimates to compare against
    - Compare your calculated value against the external reference
 
-3. **The "does anything look off?" scan:**
+3. **Earnings transcript verification (Tier 3 power move):**
+   - Search transcripts for specific numbers the company reported about the
+     data domain you're verifying. Use `search_context` with `source: "transcripts"`
+     and the metric + time period.
+   - Example: You computed Humana's MLR at 89.4% for Q4 2023. Search transcripts
+     for "MLR Q4 2023 benefit expense ratio" with `ticker: "HUM"`. If the CEO
+     said "190 basis point miss in the quarter" and your data shows the same
+     delta from prior year — the entire pipeline is proven end-to-end.
+   - Example: Your enrollment dashboard shows UNH at 7.1M MA members. Search
+     transcripts for "Medicare Advantage membership enrollment" with `ticker: "UNH"`.
+     If the CFO quoted the same number, your scraping + extraction + value mapping
+     + SQL model all produced a correct result.
+   - This is the strongest form of Tier 3: the company's own earnings call is
+     the ultimate external reference, and we have it indexed and searchable.
+
+4. **The "does anything look off?" scan:**
    - Look at the output with domain expert eyes
    - Flag anything suspicious with explanation
 
