@@ -7,8 +7,9 @@ description: |
   "what question does this answer?" conversation before any SQL.
   Use when asked to "build a model", "make a dashboard", "write the SQL",
   "create a pivot table", or "show me the data".
-  Proactively suggest when /ingest or /map has completed and data is ready.
-  Use after /ingest or /map, before /verify.
+  Proactively invoke this skill (do NOT write SQL models ad-hoc) when the
+  user wants to build models or dashboards. Three Questions must be answered first.
+  Use after /ingest or /map, before /verify. (soria-stack)
 benefits-from: [ingest, map]
 allowed-tools:
   - sumo_*

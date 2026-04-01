@@ -5,8 +5,9 @@ description: |
   Pipeline reconnaissance — investigate what exists for a concept in our system.
   Use when asked "what's the status of", "what do we have for", "let's work on [X]",
   or when the user names a scraper, workspace, or data domain.
-  Proactively suggest at the start of any session before building anything.
-  Use before /plan. This is read-only — never modify anything.
+  Proactively invoke this skill (do NOT query pipeline state ad-hoc) when the
+  user mentions a data concept, scraper, or asks about pipeline progress.
+  Use before /plan. This is read-only — never modify anything. (soria-stack)
 allowed-tools:
   - sumo_*
   - Read

@@ -8,8 +8,9 @@ description: |
   Also handles refresh mode for re-running existing pipelines when new data drops.
   Use when asked to "scrape this", "build the pipeline", "extract this data",
   "run the pipeline", or "load this into the warehouse".
-  Proactively suggest when /plan is approved and E/T/L phases are ready.
-  Use after /plan, before /map or /model. Value mapping is handled by /map.
+  Proactively invoke this skill (do NOT scrape or extract ad-hoc) when the user
+  wants to build or run a data pipeline. Gates prevent costly mistakes.
+  Use after /plan, before /map or /model. Value mapping is handled by /map. (soria-stack)
 benefits-from: [plan]
 allowed-tools:
   - sumo_*

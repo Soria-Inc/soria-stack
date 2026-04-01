@@ -7,8 +7,9 @@ description: |
   from the former /scout skill.
   Use when asked "come up with a plan", "what should we do", "how should we
   approach this", "let's work on [X]", or after /status reveals gaps.
-  Proactively suggest when the user describes a goal without specifying steps.
-  Use after /status, before /ingest or /model.
+  Proactively invoke this skill (do NOT start building ad-hoc) when the user
+  describes a data goal without specifying steps or when planning is needed.
+  Use after /status, before /ingest or /model. (soria-stack)
 benefits-from: [status]
 allowed-tools:
   - sumo_*

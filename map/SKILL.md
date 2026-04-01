@@ -6,8 +6,9 @@ description: |
   Semantic reasoning about whether two values represent the same concept.
   Use when asked to "value map", "normalize values", "canonical", "map these values",
   or when /ingest is done and values need normalization before /model.
-  Proactively suggest when /status shows unmapped values or /ingest flags value drift.
-  Use after /ingest, before /model.
+  Proactively invoke this skill (do NOT map values ad-hoc) when /status shows
+  unmapped values or /ingest flags value drift across eras.
+  Use after /ingest, before /model. (soria-stack)
 benefits-from: [ingest]
 allowed-tools:
   - sumo_*

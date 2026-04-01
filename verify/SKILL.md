@@ -10,9 +10,9 @@ description: |
   Use when asked to "verify this", "is this data correct", "check the pipeline",
   "prove it", "validate the model", "profile the data", "review the SQL",
   or "what does this data look like".
-  Proactively suggest after any /ingest gate, after /model, or when data quality
-  is in question. Can run against /plan verification criteria if a plan exists.
-  Use after /ingest, /map, or /model.
+  Proactively invoke this skill (do NOT claim data is correct without evidence)
+  after any /ingest gate, after /model, or when data quality is in question.
+  Use after /ingest, /map, or /model. (soria-stack)
 benefits-from: [ingest, map, model, plan]
 allowed-tools:
   - sumo_*
