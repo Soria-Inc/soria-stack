@@ -11,6 +11,8 @@ Skills live in their own directories. Invoke them by name (e.g., `/scout`).
 
 | Skill | What it does |
 |-------|-------------|
+| `/tools` | Load MCP tools via ToolSearch. Required before any Soria MCP call. |
+| `/status` | Investigate pipeline state of a concept. Scraper → files → groups → schema → warehouse → models → dashboards. |
 | `/scout` | Understand sources, design analytical architecture, classify effort. Start here. |
 | `/ingest` | Build and run data pipelines with six hard-stop gates. |
 | `/profile` | Inspect raw data quality before writing SQL models. 4 parallel checks. |
@@ -29,9 +31,14 @@ Read `ETHOS.md` before any data pipeline work. Includes:
 
 ## Skill chaining
 
+`/tools` is the foundational pattern — search before you call. `/status` is the
+starting point when picking up existing work — recon before building.
+
 Skills produce artifacts that downstream skills consume:
 
 ```
+/status → status report (pipeline map with ✅/⚠️/❌ per stage, recommended next skill)
+  ↓
 /scout → recon doc (source analysis, coverage map, effort classification)
   ↓
 /ingest → extraction report (files processed, schema applied, value maps)
