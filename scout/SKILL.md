@@ -141,6 +141,16 @@ Goal: design how multiple sources compose into an answer. This is the mode that 
 
 6. **Present the architecture.** Show the full lineage diagram and coverage map.
 
+### Scope Modes
+
+After presenting the architecture, offer scope modes:
+
+- **EXPANSION:** "What related datasets would make this 10x more valuable? What if we also ingested [specific related source]?"
+- **HOLD:** "Let me stress-test this architecture. What are we missing? Where could this break?"
+- **REDUCTION:** "What's the minimum set of sources to answer the core question this week?"
+
+Let the human pick a mode. Default to HOLD if they don't choose.
+
 ### ⛔ GATE: ARCHITECTURE REVIEWED
 Do NOT proceed to building until the human reviews the architecture.
 Expect pushback on coverage assumptions, temporal alignment, and grain decisions.
@@ -203,6 +213,10 @@ cat > ~/.soria-stack/artifacts/scout-$(date +%Y%m%d-%H%M%S).md << 'ARTIFACT'
 
 ## Platform Fit
 [Standard extractor path vs custom transform — and why]
+
+## Outcome
+Status: [DONE | DONE_WITH_CONCERNS | BLOCKED | NEEDS_CONTEXT]
+Lesson: [What was interesting or unexpected]
 ARTIFACT
 ```
 
