@@ -17,6 +17,7 @@ Skills live in their own directories. Invoke them by name (e.g., `/status`).
 | `/map` | Value mapping — normalize raw values to canonical forms across eras. |
 | `/model` | Design bronze → silver → gold → platinum SQL models. Grain-first. |
 | `/verify` | Five modes: pipeline, model, analytical, SQL review, data quality profile. |
+| `/promote` | Promote workspace to production. REQUIRES human approval. Only path to prod. |
 | `/newsroom` | News pipeline ops — branch management, prompt tuning, source review. |
 | `/retro` | Review recent work, find patterns, propose principle updates. |
 

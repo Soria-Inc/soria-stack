@@ -50,6 +50,7 @@ and what to verify.
 | Checking if data is correct | `/verify` (Modes 1-3) |
 | Reviewing SQL quality | `/verify` (Mode 4) |
 | Profiling data before writing SQL | `/verify` (Mode 5) |
+| Promoting to production | `/promote` (requires human approval) |
 | Working with the news pipeline | `/newsroom` |
 | Reviewing recent work for lessons | `/retro` |
 
@@ -58,9 +59,10 @@ and what to verify.
 ```
 /tools (always first)
    ↓
-/status → /plan → /ingest → /map → /model → /verify
+/status → /plan → /ingest → /map → /model → /verify → /promote
                                                 ↑
                                      (verify runs after any phase)
+   + /promote (ONLY when human says "push to prod")
    + /newsroom (separate domain)
    + /retro (periodic)
 ```

@@ -57,6 +57,7 @@ do NOT continue ad-hoc:
 - If values need normalization → suggest `/map`
 - If data is clean → suggest `/model`
 - Always suggest `/verify` to confirm extraction quality
+- **NEVER promote to prod from here.** If the user says "push to prod", invoke `/promote`.
 
 ---
 

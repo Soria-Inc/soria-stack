@@ -55,6 +55,7 @@ do NOT continue ad-hoc:
 - User wants to profile data before writing SQL → invoke `/verify` (Mode 5)
 
 **After /model completes, suggest `/verify`** (Mode 2: Model Verify + Mode 4: SQL Review).
+**NEVER promote to prod from here.** If the user says "push to prod", invoke `/promote`.
 
 ---
 
