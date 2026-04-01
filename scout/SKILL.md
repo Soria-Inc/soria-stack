@@ -1,11 +1,16 @@
 ---
 name: scout
-version: 1.0.0
-description: >
-  Understand the data landscape before touching any tools.
+version: 2.0.0
+description: |
+  Data reconnaissance — understand the data landscape before touching any tools.
   Three modes: source recon, analytical architecture, effort estimation.
   Prevents the AI from jumping ahead — every pipeline that went poorly
   started with the AI building before looking.
+  Use when asked to "look at this data", "what sources do we need", "plan the pipeline",
+  "how hard is this", or any new data project.
+  Proactively suggest when the user mentions a new data source, asks about a dataset,
+  or starts talking about building a pipeline without first understanding what they're working with.
+  Use before /ingest.
 allowed-tools:
   - sumo_*
   - exa_*
@@ -13,6 +18,26 @@ allowed-tools:
   - web_fetch
   - Read
   - Bash
+  - AskUserQuestion
+---
+
+## Preamble (run first)
+
+```bash
+mkdir -p ~/.soria-stack/artifacts
+_BRANCH=$(git branch --show-current 2>/dev/null || echo "unknown")
+echo "BRANCH: $_BRANCH"
+echo "SKILL: scout"
+echo "---"
+echo "Checking existing inventory..."
+```
+
+Read `ETHOS.md` from this skill pack. Key principles for /scout: #1, #2, #21, #22, #23, #24, #25, #26.
+
+**Before anything else:** Run an inventory check. What scrapers, workspaces, groups, and models already exist for this domain? Don't build what's already there (Principle #24).
+
+**Platform capability check:** Can this source be handled by standard extractors (per-file, deterministic), or does it need custom transform code (cross-file association, waterfall fallbacks, non-deterministic AI re-validation)? Flag this now, not mid-pipeline (Principle #26).
+
 ---
 
 # /scout — "What are we looking at?"
@@ -52,14 +77,16 @@ Goal: understand ONE data source completely before proposing anything.
    - **Level 2:** Consistent format with minor variations (column renames, extra columns in newer files). Scrape → group → extract with schema mappings → publish.
    - **Level 3:** PDF tables with tabular data. Needs page detection, extraction prompts, value mapping. Format may drift across eras.
    - **Level 4:** Multi-format source (different file types across years, or PDFs where the layout fundamentally changes). Requires era-specific handling, possibly multiple extractors.
+   - **Level 5:** Cross-file dependencies (XBRL + HTML + PDF per entity, waterfall parsing logic, non-deterministic AI validation). Requires custom Transform step — standard extractors won't work. Flag for ETVL treatment (Principle #26).
 
 5. **Present findings.** Show:
    - Format summary with era breakdown
    - Sample data from each era (3-5 rows)
    - Complexity classification with justification
    - Any red flags (e.g., "2007-2013 files are scanned images, not text PDFs")
+   - **Platform fit assessment:** Standard extractor path or custom transform required?
 
-### ⛔ HARD STOP
+### ⛔ GATE: RECON COMPLETE
 Do NOT proceed to scraping, grouping, or extraction until the human reviews your recon.
 Wait for explicit approval or direction.
 
@@ -114,7 +141,7 @@ Goal: design how multiple sources compose into an answer. This is the mode that 
 
 6. **Present the architecture.** Show the full lineage diagram and coverage map.
 
-### ⛔ HARD STOP
+### ⛔ GATE: ARCHITECTURE REVIEWED
 Do NOT proceed to building until the human reviews the architecture.
 Expect pushback on coverage assumptions, temporal alignment, and grain decisions.
 Schema design is a conversation — present options with tradeoffs.
@@ -135,6 +162,7 @@ Goal: classify and sequence the work so the human can prioritize.
    | 2 | Excel/CSV with format variations | Scrape → group → extract with mappings → publish | 1-2 hours |
    | 3 | PDFs with tables, format drift | Scrape → group → detect → extract → value map → verify → publish | 3-8 hours |
    | 4 | Multi-format across years | Per-format Tier 3 + era handling + unified schema | 1-2 days |
+   | 5 | Cross-file dependencies | Custom Transform script + ETVL pipeline + verification | 2-5 days |
 
 2. **Identify quick wins.**
    - Which sources already have files downloaded? (skip scraping)
@@ -148,8 +176,37 @@ Goal: classify and sequence the work so the human can prioritize.
 
 4. **Present the work plan** as a table with source, tier, status, next step, and estimated time.
 
-### ⛔ HARD STOP
+### ⛔ GATE: PLAN APPROVED
 Do NOT start executing the plan until the human approves the sequencing.
+
+---
+
+## Artifact Output
+
+At the end of a scout session, write a recon doc:
+
+```bash
+cat > ~/.soria-stack/artifacts/scout-$(date +%Y%m%d-%H%M%S).md << 'ARTIFACT'
+# Scout Report: [Domain/Dataset Name]
+
+## Sources
+[Format summary, era breakdown, complexity classification]
+
+## Architecture
+[Coverage map, temporal joins, model stack proposal]
+
+## Work Plan
+[Sequenced effort estimation]
+
+## Open Questions
+[Anything that needs human decision before /ingest can start]
+
+## Platform Fit
+[Standard extractor path vs custom transform — and why]
+ARTIFACT
+```
+
+This artifact is consumed by `/ingest` when the pipeline starts.
 
 ---
 
@@ -165,15 +222,4 @@ Do NOT start executing the plan until the human approves the sequencing.
 
 5. **Diving into extraction without a coverage map.** Starting with one state's Medicaid data without knowing how many states are needed for the full picture. The coverage map prevents building 1 of 21 and then discovering the approach doesn't generalize.
 
----
-
-## Principles That Apply Here
-
-Read `principles.md` in full. Key principles for /scout:
-- **#1** Think before you build
-- **#2** Test on 3 before testing on all
-- **#21** Design the answer, then find the data
-- **#22** Coverage and overlap before extraction
-- **#23** Temporal semantics before temporal joins
-- **#24** Inventory before action
-- **#25** Classify effort before committing
+6. **Assuming standard extractors will work on complex sources.** If the source requires cross-file association, waterfall parsing, or non-deterministic AI re-validation — flag it in Mode 1, not mid-Gate 3 of /ingest. This saves hours of rework.

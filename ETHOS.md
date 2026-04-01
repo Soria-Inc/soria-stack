@@ -1,10 +1,23 @@
-# SoriaStack — Data Principles
+# SoriaStack — Data Principles & Ethos
 
 > These principles are extracted from real Claude Code sessions at Soria Analytics.
 > Each one maps to at least one session where either Adam stated it explicitly
 > or the AI violated it and wasted time.
 >
-> Last updated: 2026-03-26
+> They are injected into every skill's preamble. They are the source of truth.
+
+---
+
+## The Philosophy
+
+A single person with AI and the right data tooling can build what used to take
+a team of data engineers. The extraction barrier is gone. What remains is
+**judgment** — knowing what to extract, at what grain, for what audience, and
+proving it's correct.
+
+SoriaStack is a set of cognitive modes and composable functions — not a framework.
+When a gate or pattern doesn't fit the problem, document why and work around it.
+**Never force the data to fit the system.**
 
 ---
 
@@ -20,7 +33,7 @@ Pick the oldest file, the newest file, and one from mid-history. Extract those 3
 When the source has a wide table (measures as columns), extract it as-is — one row per entity with N value columns. Unpivot to long format in the silver SQL model, not in the extractor. Complex reshaping during extraction fails; simple extraction is reliable extraction.
 
 ### 4. Bronze loads all raw data as-is. Silver defines types, unpivots, and cleans
-- **Bronze** = `SELECT *` from the warehouse table with version pin (DuckLake snapshot), no transforms. `kind EXTERNAL` or VIEW wrapper over DuckLake via `@ducklake()` macro.
+- **Bronze** = `SELECT *` from the warehouse table with version pin (DuckLake snapshot), no transforms. `kind EXTERNAL` or VIEW wrapper over DuckLake via `@ducklake()` macro. **Bronze tables must be materialized in MotherDuck before any downstream work.** Never run dashboards or silver models on un-materialized DuckLake views.
 - **Silver** = explicit `CAST` on every column, unpivot wide metric columns into `metric_name`/`metric_value` rows, rename to clean snake_case, filter invalid records. One silver model per bronze table. No joins in silver.
 
 ### 5. Silver gets everything — Gold decides what matters
@@ -104,3 +117,13 @@ First step of any new work: check what scrapers, workspaces, groups, and models 
 - **Tier 2:** Simple Excel/CSV with format variations → scrape + extract + publish.
 - **Tier 3:** PDFs with tables and format drift across years → full pipeline (scrape + group + detect + extract + value map + publish).
 - **Tier 4:** Multi-format sources (mix of PDFs, Excel, CSVs across years) → Tier 3 per format + era-specific handling.
+
+---
+
+## Pipeline Architecture
+
+### 26. ETVL, not ETL
+The pipeline is **Extract → Transform → Value-map → Load**. Transform is arbitrary code on files — not limited to per-file extractors. When the source requires waterfall logic (XBRL → HTML fallback → PDF), cross-file association, or non-deterministic AI re-validation, the Transform step must support it. Flag this complexity at scout time, not mid-pipeline.
+
+### 27. Functions over frameworks
+Pipeline utilities (file normalization, header detection, proxy management, Gemini extraction) should be composable functions you can call, not a rigid framework you're forced through. A base scraper with deletable defaults beats a mandatory template.

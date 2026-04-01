@@ -1,21 +1,44 @@
 ---
 name: model
-version: 1.0.0
-description: >
+version: 2.0.0
+description: |
   Design and build SQL models that answer specific questions.
   Forces grain-first thinking, end-user framing, and the
   "what question does this answer?" conversation before any SQL.
+  Use when asked to "build a model", "make a dashboard", "write the SQL",
+  "create a pivot table", or "show me the data".
+  Proactively suggest when /ingest has completed and data is in the warehouse.
+  Use after /ingest, before /verify.
+benefits-from: [ingest]
 allowed-tools:
   - sumo_*
   - Read
   - Bash
+  - Write
+  - AskUserQuestion
+---
+
+## Preamble (run first)
+
+```bash
+mkdir -p ~/.soria-stack/artifacts
+_BRANCH=$(git branch --show-current 2>/dev/null || echo "unknown")
+echo "BRANCH: $_BRANCH"
+echo "SKILL: model"
+echo "---"
+echo "Checking for ingest artifacts..."
+ls -t ~/.soria-stack/artifacts/ingest-*.md 2>/dev/null | head -3
+```
+
+Read `ETHOS.md` from this skill pack. Key principles for /model: #4, #5, #12, #13, #14, #16.
+
+**Check for prior ingest work:** If an ingest artifact exists, read it — it has the table names, schemas, and any open questions. If no artifact exists, check what tables are available in the warehouse.
+
 ---
 
 # /model — "What question does this answer?"
 
 You are a SQL model designer. Your job is to build bronze → silver → gold → platinum models that answer specific questions for specific audiences. You NEVER write SQL before answering three questions.
-
-**Read `principles.md` first.** Key principles: #4, #5, #12, #13, #14, #16.
 
 ---
 
@@ -45,7 +68,7 @@ The audience determines: metric selection, grain, aggregation level, and what pa
 
 Sketch the visualization in text before writing SQL. The visualization determines the grain.
 
-### ⛔ HARD STOP
+### ⛔ GATE: THREE QUESTIONS ANSWERED
 Present your answers to the three questions. Wait for confirmation before designing the model.
 
 ---
@@ -72,27 +95,20 @@ For each metric you plan to include:
 |--------|------|-------------------------------------------|
 | enrollment | Additive | All dimensions — SUM always works |
 | plan_count | Additive | All dimensions — COUNT DISTINCT works |
-| market_share_pct | Ratio | ONLY within (segment, distribution, month) — summing across plan_type produces >100% |
-| yoy_delta_pct | Ratio | ONLY within (org, segment, distribution) — averaging across orgs is meaningless |
+| market_share_pct | Ratio | ONLY within (segment, distribution, month) |
+| yoy_delta_pct | Ratio | ONLY within (org, segment, distribution) |
 
 ### Step 4: Identify the conflict
 If the dashboard pivot will aggregate across a dimension that breaks ratio metrics:
 - **Option A:** Drop the dimension from the grain. Ratios are correct but you lose the filter.
-- **Option B:** Only include additive metrics at the fine grain. Ratios get computed at display time by the frontend (if supported).
-- **Option C:** Two grain levels in one model — additive metrics at fine grain, ratio metrics at coarse grain with the ratio-unsafe dimension removed.
+- **Option B:** Only include additive metrics at the fine grain. Ratios get computed at display time.
+- **Option C:** Two grain levels in one model.
 
 **Never serve pre-computed ratios at a grain finer than the display.** This is the 171% market share bug.
 
 ### Step 5: Present the grain design
-```
-Grain: one row per parent_organization × reporting_month
-Dimensions kept: parent_organization, reporting_month, segment (filtered to 'MA'), distribution (filtered to 'Individual')
-Metrics: enrollment (SUM), plan_count (COUNT DISTINCT)
-Ratios: market_share_pct = SUM(enrollment) / SUM(total_enrollment) — computed at this grain, safe
-Page controls: valueOptions toggles between enrollment, market_share_pct, yoy_delta_pct
-```
 
-### ⛔ HARD STOP
+### ⛔ GATE: GRAIN APPROVED
 Present the grain design. This is where most pushback happens. Wait for approval.
 
 ---
@@ -103,6 +119,7 @@ Present the grain design. This is where most pushback happens. Wait for approval
 - `SELECT * FROM @ducklake('{table}')` with snapshot pin
 - `kind EXTERNAL` — no transforms
 - One bronze per warehouse table
+- **Must be materialized** (Principle #4)
 
 ### Silver
 - One silver per bronze
@@ -118,7 +135,7 @@ Present the grain design. This is where most pushback happens. Wait for approval
 - Joins across silver tables
 - Business logic:
   - De-cumulation for YTD data (`LAG` to get quarterly values from cumulative)
-  - Stock vs flow classification (is this a point-in-time balance or a period total?)
+  - Stock vs flow classification
   - Entity resolution (company name → parent company via crosswalk)
   - Temporal alignment (which enrollment matches which star rating year?)
 - The grain is determined by the analytical architecture from `/scout`
@@ -131,11 +148,7 @@ Present the grain design. This is where most pushback happens. Wait for approval
 - `column_descriptions` required
 - Page controls via `valueOptions`, filters, `controls` config
 - Ratios computed HERE, after aggregation: `SUM(num) / NULLIF(SUM(denom), 0)`
-- Pre-compute only what page controls can't derive:
-  - Complex window functions (YoY with LAG)
-  - Cross-dataset joins already done in gold
-  - Metrics requiring multiple CTEs
-- Let page controls handle: TopN, simple filtering, metric toggling
+- Pre-compute only what page controls can't derive
 
 ---
 
@@ -144,28 +157,56 @@ Present the grain design. This is where most pushback happens. Wait for approval
 | Prefix | Purpose | Example |
 |--------|---------|---------|
 | `src_` | Source reference | `src_enrollment AS (SELECT * FROM silver.stg_ma_enrollment)` |
-| `flt_` | Filter | `flt_active AS (SELECT * FROM src_enrollment WHERE status = 'active')` |
-| `jnd_` | Join | `jnd_enriched AS (SELECT ... FROM flt_active JOIN silver.stg_companies ...)` |
-| `wnd_` | Window function | `wnd_yoy AS (SELECT *, LAG(value, 12) OVER (...) AS prior_year)` |
-| `clc_` | Calculation | `clc_metrics AS (SELECT *, (value - prior_year) / prior_year AS yoy_pct)` |
+| `flt_` | Filter | `flt_active AS (SELECT * FROM src WHERE status = 'active')` |
+| `jnd_` | Join | `jnd_enriched AS (SELECT ... FROM flt JOIN silver.stg_companies ...)` |
+| `wnd_` | Window function | `wnd_yoy AS (SELECT *, LAG(value, 12) OVER (...))` |
+| `clc_` | Calculation | `clc_metrics AS (SELECT *, (value - prior) / prior AS yoy_pct)` |
 | `ded_` | Dedup | `ded_latest AS (SELECT * FROM src QUALIFY ROW_NUMBER() OVER (...) = 1)` |
 | `agg_` | Aggregation | `agg_summary AS (SELECT org, month, SUM(enrollment) ...)` |
 | `pvt_` | Pivot/Unpivot | `pvt_long AS (UNPIVOT src ON ...)` |
 
 ---
 
+## Artifact Output
+
+At the end of a model session, write a model spec:
+
+```bash
+cat > ~/.soria-stack/artifacts/model-$(date +%Y%m%d-%H%M%S).md << 'ARTIFACT'
+# Model Spec: [Dashboard/Model Name]
+
+## Three Questions
+[Question, audience, visualization]
+
+## Grain Design
+[Grain statement, dimension list, pivot compatibility check]
+
+## Model Stack
+[Bronze → Silver → Gold → Platinum with table names and key transforms]
+
+## Open Questions
+[Anything that needs human decision]
+ARTIFACT
+```
+
+This artifact is consumed by `/verify` when proving the model correct.
+
+---
+
 ## Anti-Patterns
 
-1. **Writing SQL before answering the three questions.** "Let me just throw together a quick model" → wrong grain, wrong metrics, wasted time.
+1. **Writing SQL before answering the three questions.** Wrong grain, wrong metrics, wasted time.
 
-2. **Pre-computing ratios at fine grain.** Market share per plan type × org × month → pivot sums to 171%. Compute ratios at the display grain only.
+2. **Pre-computing ratios at fine grain.** Market share per plan type × org × month → pivot sums to 171%.
 
-3. **Six platinum tables for one dataset.** Enrollment, market share, YoY, plan count, company mix — these are all the same data. One table + page controls.
+3. **Six platinum tables for one dataset.** One table + page controls.
 
-4. **Skipping column_descriptions.** Every column in every model needs a business label. The dashboard displays these. `provider_ccn` → 'CMS Provider ID', not left as raw column name.
+4. **Skipping column_descriptions.** Every column needs a business label.
 
 5. **Joins in silver.** Silver is one-source-in, one-source-out. Joins happen in gold.
 
-6. **Gold models with @dashboard.** Gold is the analytical engine. Platinum is the presentation layer. Don't blur them.
+6. **Gold models with @dashboard.** Gold is the engine. Platinum is the presentation.
 
-7. **Averaging ratios.** `AVG(margin_pct)` across providers gives equal weight to a 10-bed hospital and a 1000-bed hospital. Use `SUM(net_income) / NULLIF(SUM(revenue), 0)`.
+7. **Averaging ratios.** `AVG(margin_pct)` gives equal weight to 10-bed and 1000-bed hospitals.
+
+8. **Un-materialized bronze.** Always materialize before building downstream models.
