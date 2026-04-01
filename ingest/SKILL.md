@@ -278,6 +278,30 @@ ARTIFACT
 
 ---
 
+## When Things Fail: Check Logfire
+
+When extraction, publish, or scraper runs fail or time out, **check Logfire
+before retrying blindly.** Use `logfire_query_run` to query recent traces.
+
+### Common failure patterns
+
+| Symptom | Logfire query | Root cause |
+|---------|-------------|------------|
+| Extraction times out | `SELECT * FROM spans WHERE span_name LIKE '%extract%' AND status = 'error' ORDER BY start DESC LIMIT 10` | GCS download overload, server restart under load, or Gemini API rate limit |
+| Scraper 504 / timeout | Look for `Browser attempt failed: Timeout 30000ms exceeded` | Site WAF blocking headless browser, or site is down |
+| Publish hangs | Look for `_get_group_context` completing but next step stalling | MotherDuck/DuckDB connection hanging — retry usually works |
+| GCS 400 INVALID_ARGUMENT | Look for `ClientError 400` with auto-retry | Transient — DBOS auto-retries 3x, usually self-heals |
+| DBOS reinitializing repeatedly | Multiple `DBOS init` spans in short window | Server overwhelmed by concurrent operations — back off |
+
+### What to do
+1. Query Logfire for the specific error
+2. Identify the root cause from the trace (don't guess)
+3. If transient (GCS 400, timeout): wait 2 min and retry
+4. If structural (missing schema, bad UUID): fix the input and retry
+5. If persistent (site blocking, DuckDB hanging): escalate to human
+
+---
+
 ## Anti-Patterns
 
 1. **Skipping Gate 3.** Test on 3 first. Always. Every session where this was

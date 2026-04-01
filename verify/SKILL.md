@@ -359,6 +359,29 @@ ARTIFACT
 
 ---
 
+## When Things Fail: Check Logfire
+
+When dashboard queries fail, data is missing, or verification hits unexpected
+errors, **check Logfire before assuming the data is wrong.** The problem may be
+infrastructure, not data quality.
+
+### Common failure patterns
+
+| Symptom | What Logfire shows | Fix |
+|---------|-------------------|-----|
+| Dashboard returns 504 | Query took >45s, exceeded gateway timeout | Platinum model too large — add filters or pre-aggregate in gold |
+| Missing data in bronze | Parquet file 404 in GCS (`ducklake-*` not found) | Bronze needs re-materialization — `warehouse_materialize` |
+| Silver model fails | `SQL validation failed` or column name mismatch | Bronze has dirty column names — republish or fix silver CAST |
+| SQLMesh plan failure | Multiple `stg_*` models failing | Usually cascading from one broken bronze table — fix the root |
+| Spot check value mismatch | Check if extraction span shows errors | May be an extraction bug, not a model bug — trace back to /ingest |
+
+### The rule
+Don't conclude "the data is wrong" until you've checked whether the
+infrastructure is healthy. A missing parquet file isn't a data quality issue —
+it's a materialization issue. A 504 isn't bad data — it's a slow query.
+
+---
+
 ## What "Done" Means
 
 Verification is DONE when you can produce a scorecard showing:
