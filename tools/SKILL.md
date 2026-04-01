@@ -2,14 +2,16 @@
 name: tools
 version: 1.0.0
 description: |
-  Load the Soria data platform MCP tools into the session. You MUST run /tools
-  before calling ANY Sumo MCP tool (sumo_*, news_*, scrape_*, extract_*,
-  schema_*, warehouse_*, dashboard_*, value_*) for the first time in a session.
-  Without /tools, these MCP tools are deferred and cannot be invoked.
-  Proactively run this — do not wait for the user to ask. If the user asks you
-  to do anything involving the Soria data platform, pipelines, scrapers,
-  schemas, extractions, dashboards, or warehouse, run /tools immediately before
-  attempting any MCP tool calls. This is a hard prerequisite, not a suggestion.
+  Load the Soria data platform MCP tools into the session. The Soria MCP server
+  provides all tools for working with Soria's data — scrapers, schemas,
+  extractions, value maps, warehouse publishing, SQL models, dashboards, and
+  news intelligence. These tools are DEFERRED at session start, meaning they
+  exist but have no schema loaded and CANNOT be called until discovered via
+  ToolSearch. Run /tools at the START of every session before doing ANY work
+  with the Soria platform. This is not just for skills — any direct MCP tool
+  call (sumo_*, news_*, mcp__sumo__*) will fail without running /tools first.
+  If you see a Soria MCP tool name in the deferred tools list, that means
+  /tools has not been run yet. Run it immediately, do not ask the user.
 allowed-tools:
   - ToolSearch
 ---
