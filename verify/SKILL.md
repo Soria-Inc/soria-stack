@@ -44,6 +44,20 @@ Read `ETHOS.md` from this skill pack. Key principles: #10, #11, #17, #18, #19, #
 criteria for each ETVLR phase. Run against those criteria, not just generic checks.
 If ingest or model artifacts exist, read those too for table names and schemas.
 
+## Skill routing (always active)
+
+When the user's intent shifts mid-conversation, invoke the matching skill —
+do NOT continue ad-hoc:
+
+- Verification reveals extraction bugs → invoke `/ingest` to fix extractor
+- Verification reveals unmapped values → invoke `/map`
+- Verification reveals SQL issues → stay in `/verify` Mode 4, or invoke `/model` to redesign
+- User wants to check pipeline status → invoke `/status`
+- User wants to build/revise the plan → invoke `/plan`
+
+**After /verify completes, suggest `/retro`** if this was the end of a pipeline
+build, or the next ETVLR phase from /plan if verification passed.
+
 ---
 
 # /verify — "Prove it"

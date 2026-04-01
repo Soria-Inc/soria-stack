@@ -33,6 +33,16 @@ ls ~/.soria-stack/artifacts/ 2>/dev/null | sed 's/-[0-9].*$//' | sort | uniq -c 
 
 Read `ETHOS.md` from this skill pack. This skill exists to keep ETHOS.md accurate and current.
 
+## Skill routing (always active)
+
+/retro is a periodic skill, not part of the main ETVLR chain. If the user
+pivots to active pipeline work mid-retro, invoke the right skill:
+
+- User wants to investigate a specific pipeline → invoke `/status`
+- User wants to fix something the retro identified → invoke the relevant
+  skill (`/ingest`, `/map`, `/model`, `/verify`) based on what needs fixing
+- User wants to plan work based on retro findings → invoke `/plan`
+
 ---
 
 # /retro — "What did we learn?"

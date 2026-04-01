@@ -41,6 +41,23 @@ warn: "No /plan found. Consider running /plan first to avoid building the wrong 
 **Pipeline framing:** This skill covers the **E, T, and L** phases of ETVLR.
 Value mapping (V) is handled by `/map`. Representation (R) is handled by `/model`.
 
+## Skill routing (always active)
+
+When the user's intent shifts mid-conversation, invoke the matching skill —
+do NOT continue ad-hoc:
+
+- User asks "what do we have" mid-pipeline → invoke `/status`
+- User wants to revisit the plan → invoke `/plan`
+- User says "now map the values" or values need normalization → invoke `/map`
+- User wants to build SQL/dashboard on the published data → invoke `/model`
+- User wants to verify extraction output → invoke `/verify` (Mode 1: Pipeline)
+- User wants to profile the data before modeling → invoke `/verify` (Mode 5)
+
+**After /ingest completes:**
+- If values need normalization → suggest `/map`
+- If data is clean → suggest `/model`
+- Always suggest `/verify` to confirm extraction quality
+
 ---
 
 # /ingest — "Build the pipeline with gates"

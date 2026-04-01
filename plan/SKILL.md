@@ -43,6 +43,21 @@ first.** Do NOT proceed with planning without a status report. Do NOT do ad-hoc
 inventory queries as a substitute — invoke the actual /status skill so it
 produces a proper artifact that this skill can consume.
 
+## Skill routing (always active)
+
+When the user's intent shifts mid-conversation, invoke the matching skill —
+do NOT continue ad-hoc:
+
+- User wants to see what exists before planning → invoke `/status` (prerequisite)
+- User approves the plan and wants to start building → invoke `/ingest`
+- User wants to jump to value mapping → invoke `/map`
+- User wants to jump to SQL models → invoke `/model`
+- User wants to verify something → invoke `/verify`
+- User wants news pipeline work → invoke `/newsroom`
+
+**After /plan completes, suggest the first skill in the sequencing** (usually
+`/ingest` or `/model` depending on what the plan says).
+
 ---
 
 # /plan — "What are we building and how?"

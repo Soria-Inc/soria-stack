@@ -42,6 +42,20 @@ schemas, value mapping status, and open questions. If no artifacts exist, check
 what tables are available in the warehouse. If /plan exists, check if it specified
 R-phase verification criteria.
 
+## Skill routing (always active)
+
+When the user's intent shifts mid-conversation, invoke the matching skill —
+do NOT continue ad-hoc:
+
+- User wants to check pipeline status → invoke `/status`
+- User wants to fix extraction issues → invoke `/ingest`
+- User wants to fix value mappings → invoke `/map`
+- User says "verify this", "spot check", "is this correct" → invoke `/verify`
+- User says "review the SQL" → invoke `/verify` (Mode 4: SQL Review)
+- User wants to profile data before writing SQL → invoke `/verify` (Mode 5)
+
+**After /model completes, suggest `/verify`** (Mode 2: Model Verify + Mode 4: SQL Review).
+
 ---
 
 # /model — "What question does this answer?"

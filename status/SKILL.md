@@ -24,6 +24,21 @@ echo "---"
 
 Read `ETHOS.md` from this skill pack. Key principle: #24 (inventory before action).
 
+## Skill routing (always active)
+
+When the user's intent shifts mid-conversation, invoke the matching skill —
+do NOT continue ad-hoc. This skill is read-only recon; building requires
+a different skill:
+
+- User wants to plan next steps after seeing status → invoke `/plan`
+- User wants to start building/scraping → invoke `/ingest` (but suggest `/plan` first)
+- User wants to map values → invoke `/map`
+- User wants to build SQL/dashboard → invoke `/model`
+- User wants to verify data → invoke `/verify`
+- User wants news pipeline work → invoke `/newsroom`
+
+**After /status completes, the most common next step is `/plan`.** Suggest it.
+
 ---
 
 # /status — "What do we have?"

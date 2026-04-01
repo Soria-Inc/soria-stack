@@ -34,6 +34,19 @@ typos), #6 (don't mutate outputs).
 the group IDs, table names, and schema. If /plan exists, check if it specified
 V-phase verification criteria.
 
+## Skill routing (always active)
+
+When the user's intent shifts mid-conversation, invoke the matching skill —
+do NOT continue ad-hoc:
+
+- User wants to check pipeline status → invoke `/status`
+- User wants to go back to extraction → invoke `/ingest`
+- User says "now build the model/dashboard" → invoke `/model`
+- User wants to verify the mapped values → invoke `/verify`
+- User wants to profile data quality → invoke `/verify` (Mode 5)
+
+**After /map completes, suggest `/model`** to build SQL on the clean data.
+
 ---
 
 # /map — "Is this the same thing?"

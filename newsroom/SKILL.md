@@ -27,6 +27,17 @@ echo "---"
 
 Read `ETHOS.md` from this skill pack. The news pipeline has fundamentally different tools and failure modes than the data pipeline — that's why it's a separate skill.
 
+## Skill routing (always active)
+
+This skill is for NEWS pipeline only. If the user's request is about the DATA
+pipeline, invoke the correct data skill — do NOT handle it here:
+
+- Data pipeline status → invoke `/status`
+- Data pipeline planning → invoke `/plan`
+- Scraping/extracting data → invoke `/ingest`
+- SQL models/dashboards → invoke `/model`
+- Data verification → invoke `/verify`
+
 ---
 
 # /newsroom — "News pipeline ops"

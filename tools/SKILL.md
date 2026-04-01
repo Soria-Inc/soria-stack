@@ -50,4 +50,20 @@ Value tools:     [count]
 Total: [count] tools ready
 ```
 
-Then say: "Tools loaded. Ready for /scout, /ingest, /profile, /model, /verify, or /newsroom."
+Then say: "Tools loaded. Ready for /status, /plan, /ingest, /map, /model, /verify, or /newsroom."
+
+---
+
+## Skill routing (always active)
+
+After tools are loaded, the user's next message determines which skill to invoke.
+Do NOT answer directly — invoke the matching skill via the Skill tool:
+
+- "What's the status of X", "let's work on X" → invoke `/status`
+- "Come up with a plan", "what should we do" → invoke `/status` first, then `/plan`
+- "Scrape this", "build the pipeline", "extract" → invoke `/ingest`
+- "Value map", "normalize values", "canonical" → invoke `/map`
+- "Build a model", "make a dashboard", "write SQL" → invoke `/model`
+- "Verify", "spot check", "profile the data", "review SQL" → invoke `/verify`
+- "News pipeline", "tune prompts" → invoke `/newsroom`
+- "Retro", "what did we learn" → invoke `/retro`
