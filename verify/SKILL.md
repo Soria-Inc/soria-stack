@@ -205,6 +205,64 @@ Confidence: HIGH
 
 ---
 
+## Mode 4: SQL Review
+
+**When to use:** After writing SQL models (`/model`). Reviews the craft quality of the SQL itself — not whether the data is correct (Modes 1-3), but whether the SQL is well-structured, maintainable, and follows conventions.
+
+### Steps
+
+1. **Read the SQL model.** For each CTE, evaluate:
+
+   - **Does it earn its place?** A CTE that just renames one column should be folded into the next CTE.
+   - **Is it named correctly?** CTE prefix must match its purpose: `src_` for source, `flt_` for filter, `clc_` for calculation, `agg_` for aggregation, `wnd_` for window functions, `ded_` for dedup, `jnd_` for joins, `pvt_` for pivot/unpivot.
+   - **Is it over-split?** 3 CTEs for what should be 1 operation → merge them.
+   - **Is it under-split?** A wall of mixed operations → break it up by concern.
+
+2. **Check conventions:**
+
+   - Every column has a `column_description` in the MODEL block (Principle #16)
+   - No joins in silver models (Principle #4)
+   - Ratios computed after aggregation (Principle #12): `SUM(num) / NULLIF(SUM(denom), 0)`
+   - Dedup uses `QUALIFY ROW_NUMBER()` not subqueries (Principle #15)
+   - No unnecessary transforms (TRIM on data that doesn't need it, LOWER on already-lowercase data)
+
+3. **Check for dead code:**
+   - CTEs defined but never referenced downstream
+   - Columns computed but never selected in the final output
+   - WHERE clauses that filter nothing (always true)
+
+4. **Check dashboard integration (platinum models only):**
+   - `@dashboard` block present with chart config
+   - `@overview` block present with natural language description
+   - Filter labels make sense to a non-technical user
+   - `valueOptions` are complete — every metric the dashboard exposes is listed
+
+### Output
+
+```
+SQL REVIEW: {model_path}
+├── CTEs: 8 total (2 issues)
+│   ├── src_enrollment: ✅ clean source reference
+│   ├── flt_active: ✅ clear filter
+│   ├── clc_derived: ⚠️ over-split — merge with next CTE
+│   ├── clc_metrics: ✅
+│   ├── agg_summary: ⚠️ averaging a pre-computed ratio (Principle #12 violation)
+│   └── ...
+├── Conventions: 6/7 pass
+│   ├── column_descriptions: ✅ all 24 columns labeled
+│   ├── no silver joins: ✅
+│   ├── ratio computation: ❌ line 47 — AVG(margin_pct) should be SUM/SUM
+│   └── ...
+├── Dead code: none found ✅
+└── Dashboard integration: ✅
+
+Fixes:
+1. Line 47: Replace AVG(margin_pct) with SUM(medical_costs) / NULLIF(SUM(premiums), 0)
+2. Merge clc_derived into clc_metrics (they operate on the same columns)
+```
+
+---
+
 ## The Verification Hierarchy
 
 Always escalate. Don't stop at Tier 1 when Tier 2 is possible.
@@ -243,6 +301,10 @@ cat > ~/.soria-stack/artifacts/verify-$(date +%Y%m%d-%H%M%S).md << 'ARTIFACT'
 
 ## Open Issues
 [Anything that needs investigation]
+
+## Outcome
+Status: [DONE | DONE_WITH_CONCERNS | BLOCKED | NEEDS_CONTEXT]
+Lesson: [What was interesting or unexpected]
 ARTIFACT
 ```
 
