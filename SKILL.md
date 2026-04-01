@@ -3,15 +3,15 @@ name: soria-stack
 version: 2.1.0
 description: |
   Data pipeline skills for Soria Analytics. Seven cognitive modes for data work:
-  /tools (search before calling MCP tools), /scout (understand before building),
-  /ingest (pipeline with gates), /profile (inspect data quality), /model (grain-first SQL),
-  /verify (prove it with evidence + SQL review), /newsroom (news pipeline ops),
-  /retro (learn from what happened).
+  /tools (search before calling MCP tools), /status (investigate pipeline state of a concept),
+  /scout (understand before building), /ingest (pipeline with gates), /profile (inspect data quality),
+  /model (grain-first SQL), /verify (prove it with evidence + SQL review),
+  /newsroom (news pipeline ops), /retro (learn from what happened).
   Suggest the right skill by stage: exploring tools or unsure what to call → /tools;
-  understanding a source → /scout; building a pipeline → /ingest;
-  inspecting data quality → /profile; designing SQL models → /model;
-  verifying data or reviewing SQL → /verify; news pipeline → /newsroom;
-  reviewing recent work → /retro.
+  "where are we with X" or "let's work on X" → /status; understanding a new source → /scout;
+  building a pipeline → /ingest; inspecting data quality → /profile;
+  designing SQL models → /model; verifying data or reviewing SQL → /verify;
+  news pipeline → /newsroom; reviewing recent work → /retro.
 allowed-tools:
   - Read
   - Bash
@@ -40,6 +40,8 @@ and what to verify.
 |-------------------|---------|
 | Unsure which tool to call | `/tools` |
 | Exploring what the MCP can do | `/tools` |
+| "Where are we with X?" | `/status` |
+| "Let's work on X" | `/status` first, then the right build skill |
 | Exploring a new data source | `/scout` |
 | Ready to build after scouting | `/ingest` |
 | Looking at data before writing SQL | `/profile` |
@@ -53,6 +55,8 @@ and what to verify.
 
 ```
 /tools (always available — search before calling)
+   ↓
+/status (recon — what exists today?)
    ↓
 /scout → /ingest → /profile → /model → /verify
                                           ↓

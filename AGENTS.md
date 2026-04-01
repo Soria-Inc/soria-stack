@@ -12,6 +12,7 @@ Skills live in their own directories. Invoke them by name (e.g., `/scout`).
 | Skill | What it does |
 |-------|-------------|
 | `/tools` | Search MCP tools before calling them. Retrieval-led reasoning for tool usage. |
+| `/status` | Investigate pipeline state of a concept. Scraper → files → groups → schema → warehouse → models → dashboards. |
 | `/scout` | Understand sources, design analytical architecture, classify effort. Start here. |
 | `/ingest` | Build and run data pipelines with six hard-stop gates. |
 | `/profile` | Inspect raw data quality before writing SQL models. 4 parallel checks. |
