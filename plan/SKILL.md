@@ -38,8 +38,10 @@ ls -t ~/.soria-stack/artifacts/plan-*.md 2>/dev/null | head -3
 Read `ETHOS.md` from this skill pack. Key principles: #1, #21, #22, #23, #24, #25, #26.
 
 **Check for /status output:** If a status artifact exists, read it — it has the
-inventory of what exists. If not, run a quick inventory check before planning
-(Principle #24).
+inventory of what exists. **If no status artifact exists, STOP and invoke /status
+first.** Do NOT proceed with planning without a status report. Do NOT do ad-hoc
+inventory queries as a substitute — invoke the actual /status skill so it
+produces a proper artifact that this skill can consume.
 
 ---
 
