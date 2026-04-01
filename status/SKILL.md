@@ -2,247 +2,253 @@
 name: status
 version: 1.0.0
 description: |
-  Investigate the current state of a data concept in the Soria system. When someone
-  says "let's work on X" or "what's the status of X", this skill maps every pipeline
-  stage — scrapers, files, groups, schemas, extractors, value mappings, warehouse tables,
-  SQL models, and dashboards — into a single situational report.
-  Trigger phrases: "status of X", "where are we with X", "let's work on X",
-  "what do we have for X", "check on X", "how far along is X".
+  Pipeline reconnaissance — investigate what exists for a concept in our system.
+  Use when asked "what's the status of", "what do we have for", "let's work on [X]",
+  or when the user names a scraper, workspace, or data domain.
+  Proactively suggest at the start of any session before building anything.
+  Use before /plan. This is read-only — never modify anything.
 allowed-tools:
   - sumo_*
   - Read
   - Bash
 ---
 
-# /status — "Where are we with this?"
+## Preamble (run first)
 
-You are investigating the current state of a data concept across the entire pipeline.
-The user said something like "let's work on NAIC data" or "what's the status of FL Medicaid?"
-Your job is to produce a complete situational report — every pipeline stage, what exists,
-what's missing, what's broken.
+```bash
+mkdir -p ~/.soria-stack/artifacts
+echo "SKILL: status"
+echo "---"
+```
 
-**Do NOT start building anything.** This is reconnaissance, not construction.
+Read `ETHOS.md` from this skill pack. Key principle: #24 (inventory before action).
 
 ---
 
-## The Investigation
+# /status — "What do we have?"
 
-Run these checks in order. Each stage feeds context to the next.
-Use `/tools` pattern: search for the right tool before calling it.
+You are a pipeline investigator. Your job is to walk through every stage of the
+data pipeline for a given concept and report what exists, what's missing, and
+what's broken. **You never modify anything — this is read-only reconnaissance.**
 
-### Stage 1: Find the Scraper(s)
+---
 
-Search by name, URL, and keyword. A concept might span multiple scrapers.
+## How It Works
 
-```sql
-SELECT id, name, url, created_at, updated_at
-FROM scrapers
-WHERE name ILIKE '%<keyword>%' OR url ILIKE '%<keyword>%'
-ORDER BY name;
+The user gives you a keyword, scraper name, workspace ID, or domain concept
+(e.g., "NAIC data", "FL Medicaid", "Kaufman Hall", "star ratings"). You
+investigate in order:
+
+### Stage 1: Find the scraper(s)
+
+Search by keyword. There may be multiple scrapers for one concept.
+
+```
+database_query: SELECT id, name, url, last_run_at FROM scrapers
+                WHERE name ILIKE '%{keyword}%' ORDER BY name
 ```
 
-**If no scraper exists:** Report that and stop. The concept hasn't entered the system yet.
-Suggest `/scout` as the next step.
+If no scrapers match, try broader searches. Report what you find or that
+nothing exists.
 
-**If multiple scrapers match:** Investigate all of them. Note which look active vs abandoned.
+### Stage 2: Files
 
-For each scraper found, record:
-- `scraper_id`, `name`, `url`
-- Whether it has code (check `scraper_manage(read)`)
-- When it was last updated
+For each scraper, check what's been downloaded.
 
-### Stage 2: Workspaces
-
-```sql
-SELECT id, name, postgres_schema, created_at
-FROM workspaces
-WHERE scraper_id = '<scraper_id>'
-ORDER BY created_at;
+```
+database_query: SELECT file_type, COUNT(*) as count,
+                MIN(created_at)::date as oldest, MAX(created_at)::date as newest
+                FROM files WHERE scraper_id = '{id}'
+                GROUP BY file_type
 ```
 
-**Note:** Data often ONLY lives in workspace schemas, not in public.
-If there are multiple workspaces, the most recent one is usually the active one.
-Check both public and workspace schemas for data.
+Report: file count, types, date range. Flag if scraper exists but has 0 files
+(never been run) or if last_run_at is stale (>30 days).
 
-### Stage 3: Files
+### Stage 3: Groups
 
-```sql
--- File count and type breakdown
-SELECT file_type, COUNT(*) as count,
-       MIN(created_at) as earliest,
-       MAX(created_at) as latest
-FROM files
-WHERE scraper_id = '<scraper_id>'
-GROUP BY file_type
-ORDER BY count DESC;
+How are files organized?
 
--- For workspace data (set search_path first or use workspace_id in tool calls)
+```
+database_query: SELECT g.id, g.name, g.file_pattern,
+                COUNT(f.id) as file_count
+                FROM groups g
+                LEFT JOIN files f ON f.group_id = g.id
+                WHERE g.scraper_id = '{id}'
+                GROUP BY g.id, g.name, g.file_pattern
 ```
 
-Report: total file count, types (PDF/CSV/XLSX/ZIP), date range, any child files
-(parent_file_id set = extracted from ZIP or sheet-split).
+Report: group names, file counts per group, ungrouped file count. Flag if
+files exist but 0 groups (needs organization).
 
-### Stage 4: Groups
+### Stage 4: Schema
 
-```sql
-SELECT g.id, g.name, g.pattern, g.parent_group_id,
-       COUNT(f.id) as file_count
-FROM groups g
-LEFT JOIN files f ON f.group_id = g.id
-WHERE g.scraper_id = '<scraper_id>'
-GROUP BY g.id, g.name, g.pattern, g.parent_group_id
-ORDER BY g.name;
-```
+For each group, check if a schema is defined.
 
-Report: group hierarchy, patterns, file distribution. Flag ungrouped files:
+Use `schema_manage(read=true)` or query schema_columns for the group.
+Report: column count, column names, whether mappings exist.
 
-```sql
-SELECT COUNT(*) as ungrouped
-FROM files
-WHERE scraper_id = '<scraper_id>' AND group_id IS NULL;
-```
+### Stage 5: Extractors / Schema Mappings
 
-### Stage 5: Schema & Extractors
+Two paths depending on file type:
 
-For each group:
-
-```sql
--- Schema columns
-SELECT id, name, column_source, canonical_id, is_required, is_nullable
-FROM schema_columns
-WHERE group_id = '<group_id>'
-ORDER BY name;
-
--- Extractors
-SELECT id, name, is_default
-FROM extractors
-WHERE group_id = '<group_id>';
-```
-
-Report: column count, whether schema is defined, whether extractors exist,
-whether there's a default extractor.
+- **PDF/Excel groups:** Check if extractors exist (`extractor_manage` read).
+  Report: extractor name, whether it's been run, how many files have child CSVs.
+- **CSV groups:** Check schema mappings (`schema_mappings` read).
+  Report: how many source columns are mapped vs unmapped.
 
 ### Stage 6: Value Mappings
 
-```sql
-SELECT sc.name as column_name,
-       COUNT(fv.id) as mapping_count,
-       COUNT(CASE WHEN fv.canonical_id IS NOT NULL THEN 1 END) as mapped_count
-FROM schema_columns sc
-LEFT JOIN file_values fv ON fv.schema_column_id = sc.id
-WHERE sc.group_id = '<group_id>'
-GROUP BY sc.name
-ORDER BY sc.name;
-```
+For groups with extracted data, check value mapping status.
 
-Report: which columns have mappings, completion percentage, unmapped values.
+Use `value_manage(operation="read")` per group.
+Report: which columns have canonicals, how many values are mapped vs unmapped.
+Flag columns with >10% unmapped values.
 
 ### Stage 7: Warehouse
 
-```sql
-SELECT id, table_name, row_count, column_names, updated_at
-FROM warehouse_tables
-WHERE group_id = '<group_id>';
+Check what's published.
+
+```
+database_query: SELECT table_name, row_count, materialized, updated_at
+                FROM warehouse_tables
+                WHERE scraper_id = '{id}'
 ```
 
-Report: whether data is published to DuckDB/MotherDuck, row counts, last update.
+Or use `warehouse_query` to check if tables exist. Report: table names, row
+counts, whether materialized. Flag un-materialized tables.
 
 ### Stage 8: SQL Models
 
-```sql
--- Check for models referencing this data
-SELECT name, layer, path, description
-FROM workspace_models
-WHERE workspace_id = '<workspace_id>'
-ORDER BY layer, name;
-```
+Check what models reference this data.
 
-Also check the soria-2 codebase for models:
-```bash
-grep -r "<scraper_name_or_keyword>" /home/openclaw/workspace/soria-2/models/ --include="*.sql" -l
-```
-
-Report: which layers exist (bronze/silver/gold/platinum), what they compute.
+Use `sql_model_list` and filter by relevant table names.
+Report: which layers exist (bronze/silver/gold/platinum), model names.
 
 ### Stage 9: Dashboards
 
-Check for `@dashboard` annotations in platinum models:
+Check if any dashboard pages exist for this data.
+
+Use `list_dashboard_pages` and match by name/table references.
+Report: page names, whether they're live.
+
+---
+
+## Output Format
+
+Present a single status table, then detail the gaps:
+
+```
+## Status: [Concept Name]
+
+| Stage | Status | Detail |
+|-------|--------|--------|
+| Scraper | OK | `cms_cost_report` — last run 2026-03-15 |
+| Files | OK | 47 CSVs (2011-2024) |
+| Groups | PARTIAL | 1 group (47 files), 12 ungrouped PDFs |
+| Schema | OK | 116 columns defined |
+| Extraction | N/A | CSVs — no extraction needed |
+| Value Map | GAP | 3 columns unmapped (metric_name: 52 values) |
+| Warehouse | OK | 456,789 rows, materialized |
+| SQL Models | PARTIAL | Bronze + silver exist, no gold/platinum |
+| Dashboards | GAP | No dashboard pages |
+
+### What's working
+- Pipeline from scrape through warehouse is complete
+- Data covers 2011-2024 with consistent schema
+
+### What's missing
+- Value mapping incomplete on metric_name (52 unmapped values)
+- No gold/platinum models — no dashboard yet
+
+### Suggested next step
+→ /map to finish value mapping, then /model for dashboard
+```
+
+**Status values:** `OK` | `PARTIAL` | `GAP` | `N/A` | `STALE` | `MISSING`
+
+---
+
+## Multi-Scraper Mode
+
+When the keyword matches multiple scrapers (e.g., "NAIC" matches 3 scrapers,
+"Medicaid" matches 12), present a summary table first:
+
+```
+## [Domain]: 3 scrapers found
+
+| Scraper | Files | Groups | Schema | Extracted | Mapped | Published | Models |
+|---------|-------|--------|--------|-----------|--------|-----------|--------|
+| naic_health | 246 | 5 | OK | OK | PARTIAL | OK | bronze+silver |
+| naic_life | 180 | 0 | GAP | GAP | GAP | GAP | none |
+| naic_property | 95 | 2 | OK | GAP | GAP | GAP | none |
+```
+
+Then let the user choose which to dive into, or offer a priority recommendation
+based on completeness (closest to done = highest priority for finishing).
+
+---
+
+## Workspace Awareness
+
+Always check if data lives in a workspace (not just public schema). Many
+pipelines are workspace-only during development.
+
+```
+database_query: SELECT id, name, schema_name FROM workspaces
+                WHERE scraper_id = '{id}'
+```
+
+If a workspace exists, query files/groups/models within that workspace schema.
+Flag if data only exists in workspace and hasn't been promoted.
+
+---
+
+## Staleness Detection
+
+Flag any of these:
+- Scraper last_run_at > 30 days ago (may need refresh)
+- Files exist but no groups (pipeline stalled at organization)
+- Groups exist but no schema (pipeline stalled at schema design)
+- Extraction done but 0 value mappings (pipeline stalled at mapping)
+- Warehouse published but no SQL models (data is there but no dashboard)
+- Bronze exists but not materialized (performance problem)
+
+---
+
+## Anti-Patterns
+
+1. **Modifying anything.** /status is read-only. If you see something broken,
+   report it — don't fix it. The user will invoke /ingest, /map, or /model
+   to fix it.
+
+2. **Skipping stages.** Always walk all 9 stages even if you think you know
+   the answer. The point is the complete picture.
+
+3. **Reporting input counts instead of actual counts.** Query the database for
+   real numbers. Don't say "47 files" because the scraper config says 47 —
+   count them.
+
+---
+
+## Artifact Output
+
 ```bash
-grep -r "@dashboard" /home/openclaw/workspace/soria-2/models/ --include="*.sql" -l | xargs grep -l "<keyword>"
+cat > ~/.soria-stack/artifacts/status-$(date +%Y%m%d-%H%M%S).md << 'ARTIFACT'
+# Status Report: [Concept Name]
+
+## Pipeline Status Table
+[The status table from above]
+
+## Scrapers
+[IDs, names, URLs for reference]
+
+## Gaps & Recommendations
+[What's missing, suggested next skill]
+
+## Outcome
+Status: DONE
+ARTIFACT
 ```
 
-Also check the dashboard config if applicable.
-
-Report: whether dashboards exist, which pages, what they show.
-
----
-
-## The Report
-
-After investigation, produce a structured report:
-
-```
-## Status: <Concept Name>
-
-### Overview
-<One paragraph: what this is, how far along it is, what the next step would be>
-
-### Pipeline Map
-
-| Stage | Status | Details |
-|-------|--------|---------|
-| Scraper | ✅/⚠️/❌ | <name>, <file count>, last run <date> |
-| Files | ✅/⚠️/❌ | <count> files (<types>), <date range> |
-| Groups | ✅/⚠️/❌ | <count> groups, <ungrouped> ungrouped |
-| Schema | ✅/⚠️/❌ | <count> columns defined |
-| Extractors | ✅/⚠️/❌ | <count> extractors, default: <yes/no> |
-| Mappings | ✅/⚠️/❌ | <mapped>/<total> columns mapped |
-| Warehouse | ✅/⚠️/❌ | <row count> rows in <table_name> |
-| SQL Models | ✅/⚠️/❌ | <layers present> |
-| Dashboards | ✅/⚠️/❌ | <page count> pages |
-
-### What's Working
-<Bullet list of what's solid>
-
-### What's Broken or Missing
-<Bullet list of gaps, blockers, issues — be specific>
-
-### Recommended Next Step
-<Single clear recommendation — which skill to invoke next>
-```
-
-**Status legend:**
-- ✅ = exists and looks healthy
-- ⚠️ = exists but has issues (incomplete, stale, partially broken)
-- ❌ = doesn't exist or completely broken
-
----
-
-## Edge Cases
-
-**Multiple scrapers for one concept:** Report all of them. Note which is the "active"
-one (most recent files, most groups, has workspace) vs abandoned attempts.
-
-**Data only in workspace, not public:** This is normal for in-progress work. Flag it
-but don't treat it as broken.
-
-**Stale data:** If the most recent file is >30 days old, flag the scraper as potentially
-stale. The source may have updated since.
-
-**No scraper at all:** The concept hasn't entered the system. Suggest `/scout` to
-investigate the source and plan the pipeline.
-
----
-
-## Artifact
-
-Write the status report to the thread/conversation. If the report reveals
-significant state worth preserving, suggest writing it to the knowledge base.
-
-```yaml
-completion: DONE
-next_skill: <suggested skill based on gaps found>
-concept: <what was investigated>
-scraper_ids: [<list of scraper IDs found>]
-workspace_ids: [<list of workspace IDs found>]
-```
+This artifact is consumed by `/plan` when designing the work.

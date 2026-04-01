@@ -1,17 +1,21 @@
 ---
 name: model
-version: 2.0.0
+version: 3.0.0
 description: |
   Design and build SQL models that answer specific questions.
   Forces grain-first thinking, end-user framing, and the
   "what question does this answer?" conversation before any SQL.
   Use when asked to "build a model", "make a dashboard", "write the SQL",
   "create a pivot table", or "show me the data".
-  Proactively suggest when /ingest has completed and data is in the warehouse.
-  Use after /ingest, before /verify.
-benefits-from: [ingest]
+  Proactively suggest when /ingest or /map has completed and data is ready.
+  Use after /ingest or /map, before /verify.
+benefits-from: [ingest, map]
 allowed-tools:
   - sumo_*
+  - exa_*
+  - pplx_*
+  - mcp__perplexity__*
+  - mcp__exa__*
   - Read
   - Bash
   - Write
@@ -32,13 +36,31 @@ ls -t ~/.soria-stack/artifacts/ingest-*.md 2>/dev/null | head -3
 
 Read `ETHOS.md` from this skill pack. Key principles for /model: #4, #5, #12, #13, #14, #16.
 
-**Check for prior ingest work:** If an ingest artifact exists, read it — it has the table names, schemas, and any open questions. If no artifact exists, check what tables are available in the warehouse.
+**Check for prior work:** Read any ingest or map artifacts — they have table names,
+schemas, value mapping status, and open questions. If no artifacts exist, check
+what tables are available in the warehouse. If /plan exists, check if it specified
+R-phase verification criteria.
 
 ---
 
 # /model — "What question does this answer?"
 
 You are a SQL model designer. Your job is to build bronze → silver → gold → platinum models that answer specific questions for specific audiences. You NEVER write SQL before answering three questions.
+
+---
+
+## Domain Grounding (before the Three Questions)
+
+Before designing the model, search for how analysts in this domain think about
+the data. Use Perplexity or Exa:
+
+- "How do equity analysts evaluate [Medicare Advantage enrollment trends]?"
+- "What metrics do healthcare investors track for [hospital utilization]?"
+- "Standard KPIs for [insurance Medical Loss Ratio analysis]?"
+
+This grounds your Question 1 (what question does this answer?) in how real
+analysts frame the problem, not just what columns exist in the data. Skip this
+step if the domain is already well-understood from prior sessions.
 
 ---
 

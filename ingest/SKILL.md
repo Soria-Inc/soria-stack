@@ -1,15 +1,16 @@
 ---
 name: ingest
-version: 2.0.0
+version: 3.0.0
 description: |
-  Build and run data pipelines with six hard-stop gates.
-  Each gate requires human review before proceeding.
+  Build and run data pipelines — scrape, organize, extract, and publish.
+  Five gates with human review at each stop.
+  Handles both PDF/Excel extraction and CSV schema mapping paths.
   Also handles refresh mode for re-running existing pipelines when new data drops.
   Use when asked to "scrape this", "build the pipeline", "extract this data",
   "run the pipeline", or "load this into the warehouse".
-  Proactively suggest when the user has completed /scout and is ready to build.
-  Use after /scout, before /model.
-benefits-from: [scout]
+  Proactively suggest when /plan is approved and E/T/L phases are ready.
+  Use after /plan, before /map or /model. Value mapping is handled by /map.
+benefits-from: [plan]
 allowed-tools:
   - sumo_*
   - Read
@@ -26,25 +27,31 @@ _BRANCH=$(git branch --show-current 2>/dev/null || echo "unknown")
 echo "BRANCH: $_BRANCH"
 echo "SKILL: ingest"
 echo "---"
-echo "Checking for scout artifacts..."
-ls -t ~/.soria-stack/artifacts/scout-*.md 2>/dev/null | head -3
+echo "Checking for plan artifacts..."
+ls -t ~/.soria-stack/artifacts/plan-*.md 2>/dev/null | head -3
 ```
 
 Read `ETHOS.md` from this skill pack. All principles apply during ingestion.
 
-**Check for prior scout work:** If a scout artifact exists, read it — it has the source analysis, complexity classification, and platform fit assessment. If no scout artifact exists, warn: "No /scout recon found. Consider running /scout first to avoid building the wrong thing."
+**Check for prior plan:** If a plan artifact exists, read it — it has the ETVLR
+phase status, verification criteria per phase, and sequencing. If no plan exists,
+warn: "No /plan found. Consider running /plan first to avoid building the wrong thing."
 
-**Pipeline framing:** This pipeline follows **ETVL** — Extract, Transform, Value-map, Load (Principle #26). The Transform step is NOT limited to per-file extractors. If the scout report flagged Level 5 complexity, the Transform step may require custom code.
+**Pipeline framing:** This skill covers the **E, T, and L** phases of ETVLR.
+Value mapping (V) is handled by `/map`. Representation (R) is handled by `/model`.
 
 ---
 
 # /ingest — "Build the pipeline with gates"
 
-You are a pipeline builder. Your job is to scrape, organize, extract, map, and publish data — but NEVER skip a gate. Each gate is a checkpoint where the human must see and approve the work before you proceed.
+You are a pipeline builder. Your job is to scrape, organize, extract, and
+publish data — but NEVER skip a gate. Each gate is a checkpoint where the human
+must see and approve the work before you proceed.
 
 ---
 
-## Gate 1: Scrape (Extract)
+## Gate 1: Scrape (E — Extract)
+
 **Goal:** Download all source files.
 
 **Steps:**
@@ -53,7 +60,7 @@ You are a pipeline builder. Your job is to scrape, organize, extract, map, and p
 3. If scraper exists but no files → run it
 4. If no scraper → write one:
    - Write the scraper code
-   - Test first
+   - Test first (`test=True`)
    - Save, then run
 5. Verify: show file count, sample filenames, date range covered
 
@@ -63,209 +70,187 @@ Scraper: cms_hospital_cost_report
 Files downloaded: 47
 Date range: 2011-2024
 File types: CSV (100%)
-Sample: cms_hospital_cost_report_2024.csv, cms_hospital_cost_report_2023.csv, ...
+Sample: cms_hospital_cost_report_2024.csv, ...
 ```
+
+**Verification (from /plan):** Check against the plan's E-phase criteria. E.g.,
+"50 states have filings" → verify state count in filenames.
 
 ### ⛔ GATE 1 STOP
 Show the inventory. Wait for approval before organizing.
 
 ---
 
-## Gate 2: Organize + Schema
+## Gate 2: Organize + Schema (T — Transform, part 1)
+
 **Goal:** Group files logically and propose the extraction schema.
 
 **Steps:**
 1. Examine file contents — look at headers, formats, structure across eras
 2. Propose groups:
    - One group per logical collection
-   - If files have different schemas across eras, note which files belong to which schema era
-3. Create groups
+   - Note format eras (where column names/counts changed)
+3. Create groups with file patterns
 4. Propose the extraction schema:
-   - List every column with name, type, and whether it's a dimension or metric
-   - Explicitly state what gets EXCLUDED and why (totals, subtotals, derivable values — Principle #7)
-   - Show options if there's a design decision (e.g., "wide vs long format?")
-5. **If scout flagged Level 5 complexity:** Propose the custom Transform approach here — what waterfall logic, cross-file association, or AI re-validation is needed? This replaces the standard extractor path.
+   - List every column with name, type, dimension vs metric
+   - State what gets EXCLUDED and why (totals, derivable values — Principle #7)
+   - Show options if there's a design decision
 
-**Present to human:**
-```
-Group: cms_hospital_cost_reports
-Files: 47 (2011-2024)
-Schema eras:
-  - 2011-2018: 120 columns, headers in row 1
-  - 2019-2024: 149 columns, 29 new metrics added
+**Two paths depending on file type:**
 
-Proposed schema (14 dimensions + 102 metrics):
-  Dimensions: provider_ccn, hospital_name, state_code, city, county, ...
-  Metrics: net_patient_revenue, total_costs, number_of_beds, ...
-  Excluded: total_charges (derivable from inpatient + outpatient)
+- **PDF/Excel:** Need detection + extraction pipeline. Schema defines what to
+  extract. Propose columns based on sampling the source files.
+- **CSV:** Already structured. Schema maps CSV headers to canonical column names.
+  Use `schema_manage(operation="auto_map")` for initial matching, then fix
+  unmapped columns manually.
 
-Format decision: Extract wide (one row per provider per year, 116 columns).
-Unpivot to long format in the silver SQL model.
-```
-
-**Pushback guidance:** Don't just present what's in the file. Challenge the design:
-- "This has 15 metric columns — should they be unpivoted in extraction or in SQL? I recommend SQL (Principle #3) because [specific reason]."
-- "These 3 columns are derivable from other columns. I'd exclude them (Principle #7). Here's the math: [show it]."
-- "You asked for 5 groups but I think 1 group with era handling is simpler. Here's why."
-- If the user asks for something complex, propose the simpler version and make your case. Don't just comply.
+**Pushback guidance:** Don't just present what's in the file. Challenge:
+- "These 3 columns are derivable. I'd exclude them. Here's the math."
+- "15 metric columns — I'd extract wide and unpivot in SQL (Principle #3)."
+- "You asked for 5 groups but 1 group with era handling is simpler."
 
 ### ⛔ GATE 2 STOP
-Schema design is a conversation (Principle #8). Present the schema proposal with tradeoffs. Take a position. Expect pushback — that's the point. Do NOT proceed until the human approves the schema.
+Schema design is a conversation (Principle #8). Present proposals with tradeoffs.
+Take a position. Do NOT proceed until the human approves.
 
 ---
 
-## Gate 3: Sample Extract (Transform — 3 files)
-**Goal:** Extract 3 files and verify against sources. This is Principle #2 in action.
+## Gate 3: Sample Extract (T — Transform, part 2)
+
+**Goal:** Extract 3 files and verify against sources. Principle #2 in action.
 
 **Steps:**
-1. Pick 3 files: **oldest available, newest available, one from mid-history**
+1. Pick 3 files: **oldest, newest, mid-history**
    - If format eras exist, pick one from each era
-2. Run extraction on each
+2. Run extraction on each:
+   - **PDF/Excel:** Run detection + extraction
+   - **CSV:** Run schema mapping
 3. For each extracted file, compare against the source (Principle #11):
    - Pull 10 specific values from the source document
-   - Find the same values in the extracted CSV
-   - Show comparison as a table with ✅/❌ per value
+   - Find the same values in the extracted output
+   - Show comparison table with match/mismatch per value
 
    ```
    File: cms_hospital_cost_report_2024.csv (newest)
-   | Field | Source (PDF/XLSX) | Extracted CSV | Match |
-   |-------|-------------------|---------------|-------|
-   | Provider CCN 050454 net_patient_revenue | $1,234,567 | 1234567 | ✅ |
-   | Provider CCN 050454 total_beds | 382 | 382 | ✅ |
+   | Field | Source | Extracted | Match |
+   |-------|--------|-----------|-------|
+   | CCN 050454 net_revenue | $1,234,567 | 1234567 | yes |
+   | CCN 050454 total_beds | 382 | 382 | yes |
+   Result: 10/10 match
    ```
 
-4. If any mismatches: diagnose, fix the extractor, re-run the 3 samples
-5. Check for format-era issues: does the same extractor handle all 3 files correctly?
+4. If mismatches: diagnose, fix extractor, re-run samples
+5. Check format-era handling: does the same extractor work across all 3?
 
-**For Level 5 sources:** The Transform step here is the custom script, not a standard extractor. Run it on 3 entities (not 3 files) and verify the output.
-
-**Present to human:** The 3 comparison tables plus any issues found.
+**For Level 5 sources (from /plan):** The Transform step is custom code, not a
+standard extractor. Run on 3 entities and verify the output.
 
 ### ⛔ GATE 3 STOP
-All 3 sample files must pass verification. If ANY mismatch exists, fix and re-verify before proceeding. Wait for human approval.
+All 3 samples must pass verification. If ANY mismatch, fix and re-verify.
+Wait for human approval.
 
 ---
 
-## Gate 4: Full Extract (Transform — all files)
+## Gate 4: Full Extract (T — Transform, part 3)
+
 **Goal:** Run extraction on all files and validate at scale.
 
 **Steps:**
 1. Run extraction on all files in the group
-2. Monitor for failures — any file that fails extraction gets flagged, not silently skipped
+2. Monitor for failures — never silently skip a file
 3. Post-extraction validation:
-   - Total files extracted vs total files in group (expect 100% or explain gaps)
-   - Row counts per file — are they reasonable? Any files with 0 rows?
-   - Schema consistency — do all extracted CSVs have the same columns?
-   - Quick distribution check — are there obvious outliers? NULL rates?
+   - Total extracted vs total in group (expect 100% or explain gaps)
+   - Row counts per file — reasonable? Any 0-row files?
+   - Schema consistency — same columns across all outputs?
+   - NULL rate scan — any unexpected NULL spikes?
 4. If failures > 5%: stop, diagnose, fix, re-run failed files
 
 **Present to human:**
 ```
 Extraction complete: 47/47 files (100%)
 Total rows: 456,789
-Row count range: 5,271 (2011) to 7,203 (2024) — increasing over time, expected
-Schema: consistent across all files (116 columns)
-NULL rate: <1% on all metric columns except rural_urban (3.2% NULL — expected)
+Row count range: 5,271 (2011) to 7,203 (2024) — increasing, expected
+Schema: consistent (116 columns)
+NULL rate: <1% on metrics, 3.2% on rural_urban (expected)
 Failures: 0
 ```
 
 ### ⛔ GATE 4 STOP
-Show the summary statistics. Wait for approval before value mapping.
+Show summary statistics. Wait for approval before publishing.
 
 ---
 
-## Gate 5: Value Map
-**Goal:** Normalize values across eras and flag ambiguous cases.
+## Gate 5: Publish + Verify (L — Load)
 
-**Steps:**
-1. Identify values that need mapping:
-   - Column name variations across eras
-   - Category/label variations (e.g., `Medicare Supplement` vs `Med Supp`)
-   - Unit variations (e.g., thousands vs millions vs raw)
-2. For each mapping, classify as:
-   - **Typo/OCR error** → auto-fix (EBIDA → EBITDA)
-   - **Historical name change** → preserve both with crosswalk (Gateway → Highmark)
-   - **Ambiguous** → flag for human review
-3. Show the complete mapping table
-
-### ⛔ GATE 5 STOP
-Show the mapping table. Flag every ambiguous case. Do NOT auto-resolve ambiguous mappings. Wait for human decisions.
-
----
-
-## Gate 6: Publish + Verify (Load)
-**Goal:** Publish to the warehouse and run verification checks.
+**Goal:** Publish to the warehouse and create the bronze model.
 
 **Steps:**
 1. Publish to bronze in the workspace (never directly to production)
-2. **Materialize the bronze table** (Principle #4 — bronze must be materialized in MotherDuck)
-3. Create the silver SQL model:
-   - `CAST` every column to its proper type
-   - Unpivot metric columns into `metric_name`/`metric_value` (if applicable)
-   - Clean column names to snake_case
-   - Add `column_descriptions` for every column (Principle #16)
-   - Dedup if needed using `QUALIFY ROW_NUMBER()` (Principle #15)
-4. Run verification (invoke `/verify` in pipeline mode):
-   - Tier 1: Spot check 3 sample files against source
-   - Tier 2: Sum checks where applicable
-   - Tier 3: Derived metric checks if external data available
+2. **Materialize the bronze table** (Principle #4 — always materialize)
+3. Verify the publish:
+   - Row count in warehouse matches extraction output
+   - Sample query returns expected data
+   - No NULL primary keys
+4. If /plan specified L-phase verification criteria, run those checks now
 
 **Present to human:**
 ```
 Published to workspace: ws_abc123
-Bronze: bronze.cms_hospital_cost_report (456,789 rows) — MATERIALIZED ✅
-Silver: silver.stg_cms_hospital_cost_report (5,471,234 rows — unpivoted)
-Verification:
-  - Spot checks: 30/30 values match source ✅
-  - Sum check: total_costs = sum of cost components ± 0.1% across all years ✅
-  - Derived: operating_margin matches CMS published benchmarks ✅
+Table: kaufman_hall__hospital_performance_metrics
+Rows: 456,789 — matches extraction output
+Materialized: yes
+Sample query: SELECT * WHERE year = 2024 LIMIT 5 → looks correct
 ```
 
-### ⛔ GATE 6 STOP
-Show the verification results. The pipeline is not "done" until verification passes. Wait for human approval before promoting the workspace.
+### ⛔ GATE 5 STOP
+Show the publish results. The pipeline is not "done" until verified. Note: value
+mapping is handled by /map (separate skill). SQL models by /model.
+
+**Suggest next step:** If values need normalization → /map. If data is clean
+and ready for SQL → /model.
 
 ---
 
 ## Refresh Mode
 
-When new data drops for an existing pipeline (e.g., new month's enrollment data):
+When new data drops for an existing pipeline:
 
 1. **Check what's new:** Compare current files vs last run
-2. **Run the existing extractor on new files only** — don't re-extract everything
-3. **Validate new extractions:** Same 3-file comparison, but only on new files
+2. **Run existing extractor on new files only** — don't re-extract everything
+3. **Validate new extractions:** Spot-check new files against source
 4. **Re-publish:** Incremental add to bronze
-5. **Re-run silver/gold/platinum:** SQL models should handle the new data automatically
-6. **Quick verify:** Spot-check the new data points
+5. **Quick verify:** Spot-check new data points
 
-Refresh is **nearly autonomous** — the gates are softer because the pipeline is already proven. But flag any anomalies:
+Refresh gates are softer — the pipeline is already proven. But flag anomalies:
 - New columns that didn't exist before
-- Significant changes in row counts
+- Significant row count changes
 - Values that break established patterns
 
 ---
 
 ## Artifact Output
 
-At the end of an ingest session, write an extraction report:
-
 ```bash
 cat > ~/.soria-stack/artifacts/ingest-$(date +%Y%m%d-%H%M%S).md << 'ARTIFACT'
 # Ingest Report: [Dataset Name]
 
 ## Pipeline Summary
-[Scraper, file counts, date range, schema]
+- Scraper: [name, ID]
+- Files: [count, types, date range]
+- Groups: [names, file counts]
+- Schema: [column count, key columns]
 
-## Value Mappings Applied
-[Mapping table summary]
+## Extraction Results
+- Files extracted: [X/Y]
+- Total rows: [count]
+- Spot check: [X/X values match]
 
-## Verification Results
-[Which tiers passed, evidence]
+## Tables Published
+- Bronze: [table name, row count, materialized yes/no]
 
-## Tables Created
-[Bronze and silver table names, row counts]
-
-## Open Questions
-[Anything that needs human decision before /model can start]
+## Next Steps
+- [ ] /map — if value mapping needed
+- [ ] /model — if ready for SQL models
 
 ## Outcome
 Status: [DONE | DONE_WITH_CONCERNS | BLOCKED | NEEDS_CONTEXT]
@@ -273,20 +258,23 @@ Lesson: [What was interesting or unexpected]
 ARTIFACT
 ```
 
-This artifact is consumed by `/model` when building SQL models.
-
 ---
 
 ## Anti-Patterns
 
-1. **Skipping Gate 3.** "The extractor looks right, let me just run it on everything." No. Test on 3 first. Always.
+1. **Skipping Gate 3.** Test on 3 first. Always. Every session where this was
+   skipped wasted time on broken extractors running on all files.
 
-2. **Silent failures.** A file that fails extraction is NOT okay to skip. Every file must extract or be explicitly flagged.
+2. **Silent failures.** A file that fails extraction is not OK to skip.
+   Every file must extract or be explicitly flagged.
 
-3. **Auto-resolving ambiguous value mappings.** When in doubt, flag it for the human.
+3. **Publishing directly to production.** Always workspace first. Verify. Promote.
 
-4. **Publishing directly to production.** Always publish to a workspace first. Verify. Then promote.
+4. **Editing CSVs instead of fixing extractors.** Fix the extraction, not the
+   output (Principle #6).
 
-5. **Editing CSVs instead of fixing extractors.** If the extraction is wrong, fix the extraction. Don't patch the output (Principle #6).
+5. **Un-materialized bronze.** If bronze isn't materialized, queries take 40
+   seconds instead of 0.02. Materialize at Gate 5. Always.
 
-6. **Un-materialized bronze tables.** If bronze isn't materialized, dashboards will take 40 seconds instead of 0.02 seconds. Materialize at Gate 6. Always.
+6. **Doing value mapping here.** Value mapping is /map. This skill gets data
+   into the warehouse. /map normalizes it. Don't conflate the two.
