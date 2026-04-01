@@ -6,12 +6,13 @@ description: |
   session before using any other soria-stack skill or calling any Soria MCP tool.
   The Soria MCP tools (sumo_*, news_*, mcp__sumo__*) are deferred at startup and
   will fail unless /tools has loaded them via ToolSearch.
-  Eight cognitive modes: /tools (load MCP tools), /scout (understand before building),
-  /ingest (pipeline with gates), /profile (inspect data quality), /model (grain-first
-  SQL), /verify (prove it with evidence + SQL review), /newsroom (news pipeline ops),
-  /retro (learn from what happened).
-  Suggest the right skill by stage: starting a session → /tools; understanding a source
-  → /scout; building a pipeline → /ingest; inspecting data quality → /profile;
+  Nine cognitive modes: /tools (load MCP tools), /status (investigate pipeline state of
+  a concept), /scout (understand before building), /ingest (pipeline with gates),
+  /profile (inspect data quality), /model (grain-first SQL), /verify (prove it with
+  evidence + SQL review), /newsroom (news pipeline ops), /retro (learn from what happened).
+  Suggest the right skill by stage: starting a session → /tools; "where are we with X"
+  or "let's work on X" → /status; understanding a new source → /scout;
+  building a pipeline → /ingest; inspecting data quality → /profile;
   designing SQL models → /model; verifying data or reviewing SQL → /verify;
   news pipeline → /newsroom; reviewing recent work → /retro.
 allowed-tools:
@@ -40,6 +41,8 @@ and what to verify.
 
 | If the user is... | Suggest |
 |-------------------|---------|
+| "Where are we with X?" | `/status` |
+| "Let's work on X" | `/status` first, then the right build skill |
 | Exploring a new data source | `/scout` |
 | Ready to build after scouting | `/ingest` |
 | Looking at data before writing SQL | `/profile` |
@@ -52,6 +55,8 @@ and what to verify.
 ## The sequence
 
 ```
+/status (recon — what exists today?)
+   ↓
 /scout → /ingest → /profile → /model → /verify
                                           ↓
                                        /retro (periodic)
