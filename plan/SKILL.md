@@ -9,7 +9,7 @@ description: |
   approach this", "let's work on [X]", or after /status reveals gaps.
   Proactively invoke this skill (do NOT start building ad-hoc) when the user
   describes a data goal without specifying steps or when planning is needed.
-  Use after /status, before /ingest or /model. (soria-stack)
+  Use after /status, before /ingest or /dashboard. (soria-stack)
 benefits-from: [status]
 allowed-tools:
   - sumo_*
@@ -51,12 +51,12 @@ do NOT continue ad-hoc:
 - User wants to see what exists before planning → invoke `/status` (prerequisite)
 - User approves the plan and wants to start building → invoke `/ingest`
 - User wants to jump to value mapping → invoke `/map`
-- User wants to jump to SQL models → invoke `/model`
+- User wants to jump to SQL models → invoke `/dashboard`
 - User wants to verify something → invoke `/verify`
 - User wants news pipeline work → invoke `/newsroom`
 
 **After /plan completes, suggest the first skill in the sequencing** (usually
-`/ingest` or `/model` depending on what the plan says).
+`/ingest` or `/dashboard` depending on what the plan says).
 
 ---
 
@@ -172,13 +172,13 @@ Break the work into phases. For each phase, state:
 
 ### ETVLR Phase Status
 
-| Phase | Status | What needs to happen | Effort | Verify |
-|-------|--------|---------------------|--------|--------|
-| E (Extract) | [status] | [specific action] | [tier] | [criteria] |
-| T (Transform) | [status] | [specific action] | [tier] | [criteria] |
-| V (Value Map) | [status] | [specific action] | [tier] | [criteria] |
-| L (Load) | [status] | [specific action] | [tier] | [criteria] |
-| R (Represent) | [status] | [specific action] | [tier] | [criteria] |
+| Phase | Status | What needs to happen | Size | Verify |
+|-------|--------|---------------------|------|--------|
+| E (Extract) | [status] | [specific action] | [S/M/L/XL] | [criteria] |
+| T (Transform) | [status] | [specific action] | [S/M/L/XL] | [criteria] |
+| V (Value Map) | [status] | [specific action] | [S/M/L/XL] | [criteria] |
+| L (Load) | [status] | [specific action] | [S/M/L/XL] | [criteria] |
+| R (Represent) | [status] | [specific action] | [S/M/L/XL] | [criteria] |
 
 ### Verification Plan (before we start)
 
@@ -235,13 +235,37 @@ For each cross-source join, state what it means in business terms:
 
 ---
 
-## Phase 5: Effort Classification & Prioritization
+## Phase 5: Sizing & Prioritization
+
+### Sizing guide
+
+**NEVER give time estimates** (hours, minutes, days). Use qualitative t-shirt
+sizes. The AI consistently over-estimates data pipeline work — most things
+are smaller than they look.
+
+| Size | What it means | Typical work |
+|------|--------------|--------------|
+| **S** | One-shot. Single skill invocation. | Clean CSV: scrape → schema map → publish. One SQL model fix. |
+| **M** | A few steps. Might need one human decision. | PDF extraction with known schema. Silver + gold model for one source. |
+| **L** | Multi-step with decisions. Several skill invocations. | New source with format drift across eras. Multi-source gold model. |
+| **XL** | Multi-session. Architecture decisions needed. | New domain from scratch. Cross-source joins with temporal alignment. |
+
+**Mapping from complexity tiers:**
+- Tier 1 (clean CSVs) → **S** — literally one `/ingest` run
+- Tier 2 (minor format variations) → **S-M**
+- Tier 3 (PDFs with format drift) → **M-L**
+- Tier 4 (multi-format across years) → **L**
+- Tier 5 (cross-file dependencies) → **L-XL**
+
+**Lake vs ocean:** If every phase is S or M, this is a lake — do the whole
+thing. If any phase is XL, that phase is the project — flag it, scope it,
+don't pretend it's routine.
 
 ### Classify each work item
 
-| Source / Task | Tier | Files | Groups | Effort | Quick Win? |
-|---------------|------|-------|--------|--------|------------|
-| [source name] | 1-5  | count | count  | est.   | yes/no     |
+| Source / Task | Tier | Files | Groups | Size | Quick Win? |
+|---------------|------|-------|--------|------|------------|
+| [source name] | 1-5  | count | count  | S/M/L/XL | yes/no |
 
 ### Sequencing rules
 
@@ -286,7 +310,7 @@ Expect pushback on:
 - Scope (too much / too little)
 - Sequencing (wrong priority order)
 - Architecture (wrong grain, wrong joins)
-- Effort estimates (too optimistic)
+- Sizing (over-sized — most things are smaller than the AI thinks)
 
 ---
 
@@ -319,7 +343,7 @@ Status: [DONE | DONE_WITH_CONCERNS | BLOCKED | NEEDS_CONTEXT]
 ARTIFACT
 ```
 
-This artifact is consumed by /ingest, /map, /model, and /verify.
+This artifact is consumed by /ingest, /map, /dashboard, and /verify.
 
 ---
 
@@ -342,3 +366,8 @@ This artifact is consumed by /ingest, /map, /model, and /verify.
 5. **Over-planning.** A Tier 1 source (clean CSV) doesn't need 5 phases of
    planning. Check the file, confirm it's clean, go straight to /ingest.
    Don't ceremony what doesn't need ceremony.
+
+6. **Giving time estimates.** Never say "this will take 3 hours" or "~45 minutes
+   per source." Use t-shirt sizes (S/M/L/XL). The AI consistently inflates
+   estimates for data pipeline work — most things are one-shot or a few steps.
+   Just size it and do it.

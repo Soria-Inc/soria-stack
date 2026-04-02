@@ -32,12 +32,12 @@ Read `ETHOS.md` from this skill pack.
 
 If the user's intent shifts away from promotion, invoke the right skill:
 
-- User wants to fix something before promoting → invoke `/ingest`, `/map`, or `/model`
+- User wants to fix something before promoting → invoke `/ingest`, `/map`, or `/dashboard`
 - User wants to verify before promoting → invoke `/verify`
 - User wants to check what exists → invoke `/status`
 
 **CRITICAL: Do NOT promote anything without this skill.** If you're in another
-skill (/ingest, /model, /verify) and the user says "push this to prod", invoke
+skill (/ingest, /dashboard, /verify) and the user says "push this to prod", invoke
 /promote — do NOT call workspace_manage(promote) directly.
 
 ---
@@ -109,6 +109,27 @@ Check for these common issues before promoting:
 - **Stale workspace clone:** If the workspace was created days ago, the
   MotherDuck clone may be outdated. Check freshness.
 
+### 5. Materialization state check
+
+Promotion can **lose materialization.** If a workspace model has
+`is_materialized=false` (the default) but the prod version was materialized as
+a TABLE, promoting overwrites the prod `SqlModelCode` record and creates a VIEW
+where there was a TABLE. This makes prod queries slow.
+
+**Before promoting, check prod materialization state:**
+```
+warehouse_query("SELECT table_name, table_type FROM information_schema.tables WHERE table_schema = 'bronze'")
+```
+
+If any bronze models are `BASE TABLE` in prod, note them. After promotion,
+re-materialize to restore the TABLE:
+```
+warehouse_materialize(model_name="bronze.{table}", materialize=True)
+```
+
+Report materialization state in the pre-flight checklist so the human can
+decide whether to re-materialize after promotion.
+
 ---
 
 ## ⛔ GATE: HUMAN APPROVAL REQUIRED
@@ -125,11 +146,16 @@ Type: [scraper / SQL-only]
 Models to promote:
   - bronze.X (VIEW)
   - silver.stg_X (VIEW)
-  - gold.X_enriched (TABLE — will materialize)
+  - gold.X_enriched (VIEW)
 
 Data to promote:
   - [table_name]: [row_count] rows
   - (or "SQL-only — no data rows")
+
+Materialization:
+  - bronze.X is currently [TABLE/VIEW] in prod
+  - [If TABLE: will need re-materialization after promotion]
+  - [If VIEW: no action needed]
 
 Verification: [PASSED / NOT VERIFIED / PASSED WITH CONCERNS]
 Dependencies: [ALL MET / ISSUES — list them]
@@ -246,7 +272,7 @@ ARTIFACT
    promotion. The human decides when to go to prod.
 
 2. **Calling workspace_manage(promote) outside this skill.** All promotion
-   goes through /promote. If you're in /ingest or /model and the user says
+   goes through /promote. If you're in /ingest or /dashboard and the user says
    "push to prod", invoke this skill — don't call the tool directly.
 
 3. **Promoting without verification.** If /verify hasn't run, warn loudly.

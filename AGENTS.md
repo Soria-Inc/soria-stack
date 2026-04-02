@@ -15,8 +15,9 @@ Skills live in their own directories. Invoke them by name (e.g., `/status`).
 | `/plan` | ETVLR orchestrator — break work into phases, plan verification upfront. |
 | `/ingest` | Scrape, organize, extract, and publish with five hard-stop gates. |
 | `/map` | Value mapping — normalize raw values to canonical forms across eras. |
-| `/model` | Design bronze → silver → gold → platinum SQL models. Grain-first. |
+| `/dashboard` | Design bronze → silver → gold → platinum SQL models. Grain-first. |
 | `/verify` | Five modes: pipeline, model, analytical, SQL review, data quality profile. |
+| `/diagnose` | Diagnose failures: silent failures, data traces, schema mismatches, infra issues. Creates Linear tickets. |
 | `/promote` | Promote workspace to production. REQUIRES human approval. Only path to prod. |
 | `/newsroom` | News pipeline ops — branch management, prompt tuning, source review. |
 | `/retro` | Review recent work, find patterns, propose principle updates. |
@@ -42,11 +43,14 @@ Read `ETHOS.md` before any data pipeline work. Includes:
    ↓
 /map → mapping report (canonical values, decisions made)
    ↓
-/model → model spec (grain, SQL models, dashboard config)
+/dashboard → model spec (grain, SQL models, dashboard config)
    ↓
 /verify → scorecard (tier results, confidence, caveats)
    ↓
 /retro → retro report (patterns, principle updates) [periodic]
+
+   + /diagnose (enters from any phase when something breaks → creates Linear tickets or fixes inline)
+
 ```
 
 Artifacts saved to `~/.soria-stack/artifacts/`. Each skill reads prior artifacts

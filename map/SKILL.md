@@ -5,10 +5,10 @@ description: |
   Value mapping — normalize raw values to canonical forms across eras and sources.
   Semantic reasoning about whether two values represent the same concept.
   Use when asked to "value map", "normalize values", "canonical", "map these values",
-  or when /ingest is done and values need normalization before /model.
+  or when /ingest is done and values need normalization before /dashboard.
   Proactively invoke this skill (do NOT map values ad-hoc) when /status shows
   unmapped values or /ingest flags value drift across eras.
-  Use after /ingest, before /model. (soria-stack)
+  Use after /ingest, before /dashboard. (soria-stack)
 benefits-from: [ingest]
 allowed-tools:
   - sumo_*
@@ -41,11 +41,11 @@ do NOT continue ad-hoc:
 
 - User wants to check pipeline status → invoke `/status`
 - User wants to go back to extraction → invoke `/ingest`
-- User says "now build the model/dashboard" → invoke `/model`
+- User says "now build the model/dashboard" → invoke `/dashboard`
 - User wants to verify the mapped values → invoke `/verify`
 - User wants to profile data quality → invoke `/verify` (Mode 5)
 
-**After /map completes, suggest `/model`** to build SQL on the clean data.
+**After /map completes, suggest `/dashboard`** to build SQL on the clean data.
 
 ---
 

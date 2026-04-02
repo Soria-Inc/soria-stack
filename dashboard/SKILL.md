@@ -1,5 +1,5 @@
 ---
-name: model
+name: dashboard
 version: 3.0.0
 description: |
   Design and build SQL models that answer specific questions.
@@ -10,6 +10,7 @@ description: |
   Proactively invoke this skill (do NOT write SQL models ad-hoc) when the
   user wants to build models or dashboards. Three Questions must be answered first.
   Use after /ingest or /map, before /verify. (soria-stack)
+  NOTE: Renamed from /model to /dashboard to avoid conflict with native Claude Code /model command.
 benefits-from: [ingest, map]
 allowed-tools:
   - sumo_*
@@ -29,13 +30,13 @@ allowed-tools:
 mkdir -p ~/.soria-stack/artifacts
 _BRANCH=$(git branch --show-current 2>/dev/null || echo "unknown")
 echo "BRANCH: $_BRANCH"
-echo "SKILL: model"
+echo "SKILL: dashboard"
 echo "---"
 echo "Checking for ingest artifacts..."
 ls -t ~/.soria-stack/artifacts/ingest-*.md 2>/dev/null | head -3
 ```
 
-Read `ETHOS.md` from this skill pack. Key principles for /model: #4, #5, #12, #13, #14, #16.
+Read `ETHOS.md` from this skill pack. Key principles for /dashboard: #4, #5, #12, #13, #14, #16.
 
 **Check for prior work:** Read any ingest or map artifacts — they have table names,
 schemas, value mapping status, and open questions. If no artifacts exist, check
@@ -54,12 +55,12 @@ do NOT continue ad-hoc:
 - User says "review the SQL" → invoke `/verify` (Mode 4: SQL Review)
 - User wants to profile data before writing SQL → invoke `/verify` (Mode 5)
 
-**After /model completes, suggest `/verify`** (Mode 2: Model Verify + Mode 4: SQL Review).
+**After /dashboard completes, suggest `/verify`** (Mode 2: Model Verify + Mode 4: SQL Review).
 **NEVER promote to prod from here.** If the user says "push to prod", invoke `/promote`.
 
 ---
 
-# /model — "What question does this answer?"
+# /dashboard — "What question does this answer?"
 
 You are a SQL model designer. Your job is to build bronze → silver → gold → platinum models that answer specific questions for specific audiences. You NEVER write SQL before answering three questions.
 
@@ -178,13 +179,39 @@ Present the grain design. This is where most pushback happens. Wait for approval
 
 ---
 
+## Prerequisites: Check Bronze Materialization
+
+Before building any model, verify that bronze tables are materialized. Un-materialized
+bronze means every silver/gold/platinum query chains through DuckLake → GCS at ~2-3s
+per table. This makes development painful and dashboards unusable.
+
+```
+warehouse_query("SELECT table_name, table_type FROM information_schema.tables WHERE table_schema = 'bronze' AND table_name IN ({your tables})")
+```
+
+- `BASE TABLE` = materialized (good)
+- `VIEW` = un-materialized (fix first)
+
+To fix: `warehouse_materialize(model_name="bronze.{table}", materialize=True)`
+
+If working in a workspace, check the workspace schema instead:
+```
+warehouse_query("SELECT table_name, table_type FROM information_schema.tables WHERE table_schema = 'bronze__{ws_schema}'")
+```
+
+**Do not proceed to silver if bronze is un-materialized.** The queries will work
+but take 40s+ instead of <1s, and you'll burn time debugging "slow queries"
+that are really just un-materialized views.
+
+---
+
 ## The Model Stack
 
 ### Bronze
 - `SELECT * FROM @ducklake('{table}')` with snapshot pin
 - `kind EXTERNAL` — no transforms
 - One bronze per warehouse table
-- **Must be materialized** (Principle #4)
+- **Must be materialized** (Principle #4 — see ETHOS.md for full details)
 
 ### Silver
 - One silver per bronze

@@ -24,15 +24,16 @@ Skills run in the order a data pipeline runs:
 **Understand → Design → Build → Verify → Present**
 
 Each skill feeds into the next. `/scout` writes a recon doc that `/ingest` reads.
-`/ingest` produces data that `/model` shapes. `/model` outputs that `/verify` proves correct.
+`/ingest` produces data that `/dashboard` shapes. `/dashboard` outputs that `/verify` proves correct.
 
 | Skill | Your specialist | What they do |
 |-------|----------------|-------------|
 | `/scout` | Data Recon Analyst | Understand sources, design analytical architecture, classify effort. Scope modes: EXPANSION / HOLD / REDUCTION. |
 | `/ingest` | Pipeline Builder | Scrape, organize, extract, map, and publish data through six hard-stop gates. |
 | `/profile` | Data Quality Inspector | 4 parallel checks on raw data: schema, distributions, outliers, NULLs. Run before writing SQL. |
-| `/model` | SQL Model Designer | Build bronze → silver → gold → platinum models. Forces grain-first thinking. Simplicity-first. |
+| `/dashboard` | SQL Model Designer | Build bronze → silver → gold → platinum models. Forces grain-first thinking. Simplicity-first. |
 | `/verify` | Paranoid Verifier | Four modes: pipeline verify, model verify, analytical verify, SQL review. Never says "looks good" without evidence. |
+| `/diagnose` | Diagnostic Investigator | Five modes: silent failure, data trace, schema mismatch, infrastructure, quality. Creates Linear tickets for backend fixes. |
 | `/newsroom` | News Pipeline Operator | Branch management, prompt tuning, source review, event clustering. Separate domain, separate tools. |
 | `/retro` | Retrospective Analyst | Reviews recent work, finds patterns, proposes principle updates. The continuous improvement loop. |
 
@@ -62,7 +63,7 @@ Then add to your project's `CLAUDE.md`:
 ```markdown
 ## soria-stack
 Data pipeline skills. Read ETHOS.md before any data work.
-Available skills: /scout, /ingest, /model, /verify, /newsroom
+Available skills: /scout, /ingest, /dashboard, /verify, /diagnose, /newsroom
 ```
 
 ### Per-repo install

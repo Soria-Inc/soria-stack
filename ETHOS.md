@@ -119,6 +119,48 @@ When the source has a wide table (measures as columns), extract it as-is — one
 - **Bronze** = `SELECT *` from the warehouse table with version pin (DuckLake snapshot), no transforms. `kind EXTERNAL` or VIEW wrapper over DuckLake via `@ducklake()` macro. **Bronze tables must be materialized in MotherDuck before any downstream work.** Never run dashboards or silver models on un-materialized DuckLake views.
 - **Silver** = explicit `CAST` on every column, unpivot wide metric columns into `metric_name`/`metric_value` rows, rename to clean snake_case, filter invalid records. One silver model per bronze table. No joins in silver.
 
+#### Materialization: what it means and how it works
+
+**What materialization is:** Converting a MotherDuck VIEW into a physical TABLE
+(`CREATE TABLE AS SELECT ...`). Without it, every query on a bronze view chains
+through DuckLake (Postgres catalog lookup ~0.5s) → GCS parquet read (~2s). A
+gold model unioning 22 bronze views = 22 × 2-3s = ~45 seconds. A materialized
+bronze TABLE returns the same data in ~0.03s.
+
+**The strategy:** Materialize bronze. Leave silver/gold/platinum as views. Views
+on top of materialized tables execute in milliseconds — there's no DuckLake
+chain to resolve. Only materialize higher layers if they do heavy unions or
+joins across many tables.
+
+**How to materialize:**
+```
+warehouse_materialize(model_name="bronze.my_table", materialize=True)
+```
+To un-materialize (restore as VIEW):
+```
+warehouse_materialize(model_name="bronze.my_table", materialize=False)
+```
+The `is_materialized` flag on the SqlModelCode record gets updated alongside the
+MotherDuck object.
+
+**Materialized tables are snapshots.** They do NOT auto-update when new data is
+published to DuckLake. After publishing new data, re-materialize bronze to pick
+up the new version. A VIEW would see new data automatically but pays the latency
+cost every query.
+
+**Gotchas:**
+- **Stale after publish:** New data in DuckLake doesn't appear in a materialized
+  TABLE until you re-run `warehouse_materialize`.
+- **Promotion can lose materialization:** If workspace model has
+  `is_materialized=false` but prod had `is_materialized=true`, promoting
+  overwrites the flag. Promote bronze first, verify it materialized, then
+  promote silver.
+- **Workspace vs prod:** `warehouse_materialize` accepts an `environment`
+  parameter. Default is prod. Pass the workspace schema name for workspace
+  materialization.
+- **Verify after materializing:** Always query the materialized table and check
+  row count matches what you expect. Silent failures have happened historically.
+
 ### 5. Silver gets everything — Gold decides what matters
 In silver, unpivot ALL metric columns except dimension columns (identifiers, addresses, dates, provider type). If someone needs "Prepaid Expenses" or "PT Medicaid visits," they shouldn't have to go back to bronze. Gold is where you join across silvers, apply business logic, de-cumulate YTD values, and decide the final grain.
 

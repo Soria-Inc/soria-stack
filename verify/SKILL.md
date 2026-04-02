@@ -11,9 +11,9 @@ description: |
   "prove it", "validate the model", "profile the data", "review the SQL",
   or "what does this data look like".
   Proactively invoke this skill (do NOT claim data is correct without evidence)
-  after any /ingest gate, after /model, or when data quality is in question.
-  Use after /ingest, /map, or /model. (soria-stack)
-benefits-from: [ingest, map, model, plan]
+  after any /ingest gate, after /dashboard, or when data quality is in question.
+  Use after /ingest, /map, or /dashboard. (soria-stack)
+benefits-from: [ingest, map, dashboard, plan]
 allowed-tools:
   - sumo_*
   - exa_*
@@ -51,7 +51,7 @@ do NOT continue ad-hoc:
 
 - Verification reveals extraction bugs → invoke `/ingest` to fix extractor
 - Verification reveals unmapped values → invoke `/map`
-- Verification reveals SQL issues → stay in `/verify` Mode 4, or invoke `/model` to redesign
+- Verification reveals SQL issues → stay in `/verify` Mode 4, or invoke `/dashboard` to redesign
 - User wants to check pipeline status → invoke `/status`
 - User wants to build/revise the plan → invoke `/plan`
 
@@ -122,7 +122,7 @@ Confidence: HIGH — all three tiers pass
 
 ## Mode 2: Model Verify
 
-**When to use:** After building SQL models (/model). Verifies that data flows
+**When to use:** After building SQL models (/dashboard). Verifies that data flows
 correctly through bronze → silver → gold → platinum.
 
 ### Steps
@@ -197,7 +197,7 @@ correctly through bronze → silver → gold → platinum.
 
 ## Mode 4: SQL Review
 
-**When to use:** After writing SQL models (/model). Reviews craft quality of
+**When to use:** After writing SQL models (/dashboard). Reviews craft quality of
 the SQL — not whether data is correct (Modes 1-3), but whether SQL is
 well-structured and follows conventions.
 

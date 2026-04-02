@@ -40,7 +40,7 @@ pivots to active pipeline work mid-retro, invoke the right skill:
 
 - User wants to investigate a specific pipeline → invoke `/status`
 - User wants to fix something the retro identified → invoke the relevant
-  skill (`/ingest`, `/map`, `/model`, `/verify`) based on what needs fixing
+  skill (`/ingest`, `/map`, `/dashboard`, `/verify`) based on what needs fixing
 - User wants to plan work based on retro findings → invoke `/plan`
 
 ---

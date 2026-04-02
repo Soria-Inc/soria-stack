@@ -6,15 +6,15 @@ description: |
   session before using any other soria-stack skill or calling any Soria MCP tool.
   The Soria MCP tools (sumo_*, news_*, mcp__sumo__*) are deferred at startup and
   will fail unless /tools has loaded them via ToolSearch.
-  Nine cognitive modes: /tools (load MCP tools), /status (what exists today),
+  Ten cognitive modes: /tools (load MCP tools), /status (what exists today),
   /plan (ETVLR orchestrator), /ingest (scrape+extract+publish), /map (value mapping),
-  /model (grain-first SQL), /verify (prove it with evidence), /newsroom (news ops),
-  /retro (learn from what happened).
+  /dashboard (grain-first SQL), /verify (prove it with evidence), /diagnose (diagnose failures),
+  /newsroom (news ops), /retro (learn from what happened).
   Suggest the right skill by stage: starting a session → /tools; investigating what
   exists → /status; planning work → /plan; building a pipeline → /ingest;
-  normalizing values → /map; designing SQL models → /model; verifying data or
-  reviewing SQL or profiling data quality → /verify; news pipeline → /newsroom;
-  reviewing recent work → /retro.
+  normalizing values → /map; designing SQL models → /dashboard; verifying data or
+  reviewing SQL or profiling data quality → /verify; something broke or isn't working
+  → /diagnose; news pipeline → /newsroom; reviewing recent work → /retro.
 allowed-tools:
   - Read
   - Bash
@@ -34,7 +34,7 @@ Read `ETHOS.md` before any data pipeline work. All principles apply.
 
 # SoriaStack — Data Pipeline Skills
 
-Nine cognitive modes for data pipeline work. Each sets how to think, when to stop,
+Ten cognitive modes for data pipeline work. Each sets how to think, when to stop,
 and what to verify.
 
 ## Skill routing
@@ -46,10 +46,11 @@ and what to verify.
 | Saying "let's work on X" or "come up with a plan" | `/plan` |
 | Ready to scrape, extract, or publish | `/ingest` |
 | Normalizing values across eras | `/map` |
-| Building SQL models or dashboards | `/model` |
+| Building SQL models or dashboards | `/dashboard` |
 | Checking if data is correct | `/verify` (Modes 1-3) |
 | Reviewing SQL quality | `/verify` (Mode 4) |
 | Profiling data before writing SQL | `/verify` (Mode 5) |
+| Something broke or isn't working | `/diagnose` |
 | Promoting to production | `/promote` (requires human approval) |
 | Working with the news pipeline | `/newsroom` |
 | Reviewing recent work for lessons | `/retro` |
@@ -59,9 +60,10 @@ and what to verify.
 ```
 /tools (always first)
    ↓
-/status → /plan → /ingest → /map → /model → /verify → /promote
+/status → /plan → /ingest → /map → /dashboard → /verify → /promote
                                                 ↑
                                      (verify runs after any phase)
+   + /diagnose (when something breaks — can enter from any phase)
    + /promote (ONLY when human says "push to prod")
    + /newsroom (separate domain)
    + /retro (periodic)
@@ -80,10 +82,27 @@ E (Extract)   → /ingest Gate 1: scrape files
 T (Transform) → /ingest Gates 2-4: group, schema, extract
 V (Value Map) → /map: normalize values to canonicals
 L (Load)      → /ingest Gate 5: publish to warehouse
-R (Represent) → /model: bronze → silver → gold → platinum SQL
+R (Represent) → /dashboard: bronze → silver → gold → platinum SQL
 ```
 
 /plan orchestrates these phases. /verify runs after each.
+
+## Workspace resolution
+
+Write-path skills (`/ingest`, `/map`, `/dashboard`, `/promote`) require a workspace.
+Before any write operation, resolve which workspace you're working in:
+
+1. **User named one** — use it.
+2. **Obvious from context** (just created, only one active, continuing prior work) — use it.
+3. **Multiple active workspaces exist** — list them and ask:
+   ```
+   workspace_manage(operation="list")
+   ```
+   Then: "I see these active workspaces: [list]. Which one should I work in?"
+4. **None exist** — offer to create one (`/ingest`, `/map`, `/dashboard`), or error (`/promote` — nothing to promote).
+
+Read-only skills (`/status`, `/verify`, `/plan`, `/newsroom`, `/retro`) don't need
+a workspace — they query across all schemas.
 
 ## Quick reference
 

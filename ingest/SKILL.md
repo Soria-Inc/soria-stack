@@ -10,7 +10,7 @@ description: |
   "run the pipeline", or "load this into the warehouse".
   Proactively invoke this skill (do NOT scrape or extract ad-hoc) when the user
   wants to build or run a data pipeline. Gates prevent costly mistakes.
-  Use after /plan, before /map or /model. Value mapping is handled by /map. (soria-stack)
+  Use after /plan, before /map or /dashboard. Value mapping is handled by /map. (soria-stack)
 benefits-from: [plan]
 allowed-tools:
   - sumo_*
@@ -39,7 +39,7 @@ phase status, verification criteria per phase, and sequencing. If no plan exists
 warn: "No /plan found. Consider running /plan first to avoid building the wrong thing."
 
 **Pipeline framing:** This skill covers the **E, T, and L** phases of ETVLR.
-Value mapping (V) is handled by `/map`. Representation (R) is handled by `/model`.
+Value mapping (V) is handled by `/map`. Representation (R) is handled by `/dashboard`.
 
 ## Skill routing (always active)
 
@@ -49,13 +49,13 @@ do NOT continue ad-hoc:
 - User asks "what do we have" mid-pipeline → invoke `/status`
 - User wants to revisit the plan → invoke `/plan`
 - User says "now map the values" or values need normalization → invoke `/map`
-- User wants to build SQL/dashboard on the published data → invoke `/model`
+- User wants to build SQL/dashboard on the published data → invoke `/dashboard`
 - User wants to verify extraction output → invoke `/verify` (Mode 1: Pipeline)
 - User wants to profile the data before modeling → invoke `/verify` (Mode 5)
 
 **After /ingest completes:**
 - If values need normalization → suggest `/map`
-- If data is clean → suggest `/model`
+- If data is clean → suggest `/dashboard`
 - Always suggest `/verify` to confirm extraction quality
 - **NEVER promote to prod from here.** If the user says "push to prod", invoke `/promote`.
 
@@ -205,28 +205,39 @@ Show summary statistics. Wait for approval before publishing.
 
 **Steps:**
 1. Publish to bronze in the workspace (never directly to production)
-2. **Materialize the bronze table** (Principle #4 — always materialize)
-3. Verify the publish:
-   - Row count in warehouse matches extraction output
+2. **Materialize the bronze table** (Principle #4 — always materialize):
+   ```
+   warehouse_materialize(model_name="bronze.{table_name}", materialize=True)
+   ```
+   If working in a workspace, pass the workspace environment:
+   ```
+   warehouse_materialize(model_name="bronze.{table_name}", materialize=True, environment="ws_{workspace_schema}")
+   ```
+3. **Verify materialization landed** — don't trust the return value alone:
+   ```
+   warehouse_query("SELECT COUNT(*) FROM bronze.{table_name}")
+   ```
+   Compare against the extraction row count. If they don't match, something went wrong.
+4. Additional publish verification:
    - Sample query returns expected data
    - No NULL primary keys
-4. If /plan specified L-phase verification criteria, run those checks now
+5. If /plan specified L-phase verification criteria, run those checks now
 
 **Present to human:**
 ```
 Published to workspace: ws_abc123
 Table: kaufman_hall__hospital_performance_metrics
-Rows: 456,789 — matches extraction output
-Materialized: yes
+Rows published: 456,789
+Materialized: ✅ (TABLE, 456,789 rows — matches)
 Sample query: SELECT * WHERE year = 2024 LIMIT 5 → looks correct
 ```
 
 ### ⛔ GATE 5 STOP
 Show the publish results. The pipeline is not "done" until verified. Note: value
-mapping is handled by /map (separate skill). SQL models by /model.
+mapping is handled by /map (separate skill). SQL models by /dashboard.
 
 **Suggest next step:** If values need normalization → /map. If data is clean
-and ready for SQL → /model.
+and ready for SQL → /dashboard.
 
 ---
 
@@ -269,7 +280,7 @@ cat > ~/.soria-stack/artifacts/ingest-$(date +%Y%m%d-%H%M%S).md << 'ARTIFACT'
 
 ## Next Steps
 - [ ] /map — if value mapping needed
-- [ ] /model — if ready for SQL models
+- [ ] /dashboard — if ready for SQL models
 
 ## Outcome
 Status: [DONE | DONE_WITH_CONCERNS | BLOCKED | NEEDS_CONTEXT]

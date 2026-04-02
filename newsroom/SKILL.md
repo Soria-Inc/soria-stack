@@ -35,7 +35,7 @@ pipeline, invoke the correct data skill — do NOT handle it here:
 - Data pipeline status → invoke `/status`
 - Data pipeline planning → invoke `/plan`
 - Scraping/extracting data → invoke `/ingest`
-- SQL models/dashboards → invoke `/model`
+- SQL models/dashboards → invoke `/dashboard`
 - Data verification → invoke `/verify`
 
 ---

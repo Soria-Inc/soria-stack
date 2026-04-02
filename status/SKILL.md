@@ -33,7 +33,7 @@ a different skill:
 - User wants to plan next steps after seeing status → invoke `/plan`
 - User wants to start building/scraping → invoke `/ingest` (but suggest `/plan` first)
 - User wants to map values → invoke `/map`
-- User wants to build SQL/dashboard → invoke `/model`
+- User wants to build SQL/dashboard → invoke `/dashboard`
 - User wants to verify data → invoke `/verify`
 - User wants news pipeline work → invoke `/newsroom`
 
@@ -178,7 +178,7 @@ Present a single status table, then detail the gaps:
 - No gold/platinum models — no dashboard yet
 
 ### Suggested next step
-→ /map to finish value mapping, then /model for dashboard
+→ /map to finish value mapping, then /dashboard for dashboard
 ```
 
 **Status values:** `OK` | `PARTIAL` | `GAP` | `N/A` | `STALE` | `MISSING`
@@ -235,7 +235,7 @@ Flag any of these:
 ## Anti-Patterns
 
 1. **Modifying anything.** /status is read-only. If you see something broken,
-   report it — don't fix it. The user will invoke /ingest, /map, or /model
+   report it — don't fix it. The user will invoke /ingest, /map, or /dashboard
    to fix it.
 
 2. **Skipping stages.** Always walk all 9 stages even if you think you know
