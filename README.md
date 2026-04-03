@@ -35,7 +35,7 @@ Each skill feeds into the next. `/scout` writes a recon doc that `/ingest` reads
 | `/verify` | Paranoid Verifier | Four modes: pipeline verify, model verify, analytical verify, SQL review. Never says "looks good" without evidence. |
 | `/diagnose` | Diagnostic Investigator | Five modes: silent failure, data trace, schema mismatch, infrastructure, quality. Creates Linear tickets for backend fixes. |
 | `/newsroom` | News Pipeline Operator | Branch management, prompt tuning, source review, event clustering. Separate domain, separate tools. |
-| `/retro` | Retrospective Analyst | Reviews recent work, finds patterns, proposes principle updates. The continuous improvement loop. |
+| `/lessons` | Retrospective Analyst | Reviews recent work, finds patterns, proposes principle updates. The continuous improvement loop. |
 
 ## Principles
 

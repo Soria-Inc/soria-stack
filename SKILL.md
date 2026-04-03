@@ -9,12 +9,12 @@ description: |
   Ten cognitive modes: /tools (load MCP tools), /status (what exists today),
   /plan (ETVLR orchestrator), /ingest (scrape+extract+publish), /map (value mapping),
   /dashboard (grain-first SQL), /verify (prove it with evidence), /diagnose (diagnose failures),
-  /newsroom (news ops), /retro (learn from what happened).
+  /newsroom (news ops), /lessons (learn from what happened).
   Suggest the right skill by stage: starting a session → /tools; investigating what
   exists → /status; planning work → /plan; building a pipeline → /ingest;
   normalizing values → /map; designing SQL models → /dashboard; verifying data or
   reviewing SQL or profiling data quality → /verify; something broke or isn't working
-  → /diagnose; news pipeline → /newsroom; reviewing recent work → /retro.
+  → /diagnose; news pipeline → /newsroom; reviewing recent work → /lessons.
 allowed-tools:
   - Read
   - Bash
@@ -53,7 +53,7 @@ and what to verify.
 | Something broke or isn't working | `/diagnose` |
 | Promoting to production | `/promote` (requires human approval) |
 | Working with the news pipeline | `/newsroom` |
-| Reviewing recent work for lessons | `/retro` |
+| Reviewing recent work for lessons | `/lessons` |
 
 ## The sequence
 
@@ -66,7 +66,7 @@ and what to verify.
    + /diagnose (when something breaks — can enter from any phase)
    + /promote (ONLY when human says "push to prod")
    + /newsroom (separate domain)
-   + /retro (periodic)
+   + /lessons (periodic)
 ```
 
 Each skill produces an artifact that the next skill consumes.
@@ -101,7 +101,7 @@ Before any write operation, resolve which workspace you're working in:
    Then: "I see these active workspaces: [list]. Which one should I work in?"
 4. **None exist** — offer to create one (`/ingest`, `/map`, `/dashboard`), or error (`/promote` — nothing to promote).
 
-Read-only skills (`/status`, `/verify`, `/plan`, `/newsroom`, `/retro`) don't need
+Read-only skills (`/status`, `/verify`, `/plan`, `/newsroom`, `/lessons`) don't need
 a workspace — they query across all schemas.
 
 ## Quick reference

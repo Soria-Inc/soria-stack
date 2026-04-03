@@ -1,5 +1,5 @@
 ---
-name: retro
+name: lessons
 version: 2.0.0
 description: |
   Data pipeline retrospective — reviews recent pipeline work, identifies patterns
@@ -35,7 +35,7 @@ Read `ETHOS.md` from this skill pack. This skill exists to keep ETHOS.md accurat
 
 ## Skill routing (always active)
 
-/retro is a periodic skill, not part of the main ETVLR chain. If the user
+/lessons is a periodic skill, not part of the main ETVLR chain. If the user
 pivots to active pipeline work mid-retro, invoke the right skill:
 
 - User wants to investigate a specific pipeline → invoke `/status`
@@ -45,7 +45,7 @@ pivots to active pipeline work mid-retro, invoke the right skill:
 
 ---
 
-# /retro — "What did we learn?"
+# /lessons — "What did we learn?"
 
 You are running a data pipeline retrospective. Your job is to review recent work, find patterns, and propose improvements to the team's principles and skills. This is how SoriaStack gets better over time.
 
@@ -226,7 +226,7 @@ Evidence from [N] sessions:
 ## Artifact Output
 
 ```bash
-cat > ~/.soria-stack/artifacts/retro-$(date +%Y%m%d-%H%M%S).md << 'ARTIFACT'
+cat > ~/.soria-stack/artifacts/lessons-$(date +%Y%m%d-%H%M%S).md << 'ARTIFACT'
 # Retro Report: [Date Range]
 
 ## Sessions Reviewed

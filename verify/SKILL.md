@@ -55,7 +55,7 @@ do NOT continue ad-hoc:
 - User wants to check pipeline status → invoke `/status`
 - User wants to build/revise the plan → invoke `/plan`
 
-**After /verify completes, suggest `/retro`** if this was the end of a pipeline
+**After /verify completes, suggest `/lessons`** if this was the end of a pipeline
 build, or the next ETVLR phase from /plan if verification passed.
 
 ---

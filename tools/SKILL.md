@@ -67,4 +67,4 @@ Do NOT answer directly — invoke the matching skill via the Skill tool:
 - "Verify", "spot check", "profile the data", "review SQL" → invoke `/verify`
 - "This isn't working", "it broke", "nothing happened", "wrong data" → invoke `/diagnose`
 - "News pipeline", "tune prompts" → invoke `/newsroom`
-- "Retro", "what did we learn" → invoke `/retro`
+- "Retro", "what did we learn" → invoke `/lessons`

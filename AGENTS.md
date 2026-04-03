@@ -20,7 +20,7 @@ Skills live in their own directories. Invoke them by name (e.g., `/status`).
 | `/diagnose` | Diagnose failures: silent failures, data traces, schema mismatches, infra issues. Creates Linear tickets. |
 | `/promote` | Promote workspace to production. REQUIRES human approval. Only path to prod. |
 | `/newsroom` | News pipeline ops — branch management, prompt tuning, source review. |
-| `/retro` | Review recent work, find patterns, propose principle updates. |
+| `/lessons` | Review recent work, find patterns, propose principle updates. |
 
 ## Principles
 
@@ -47,7 +47,7 @@ Read `ETHOS.md` before any data pipeline work. Includes:
    ↓
 /verify → scorecard (tier results, confidence, caveats)
    ↓
-/retro → retro report (patterns, principle updates) [periodic]
+/lessons → retro report (patterns, principle updates) [periodic]
 
    + /diagnose (enters from any phase when something breaks → creates Linear tickets or fixes inline)
 

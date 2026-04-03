@@ -100,7 +100,7 @@ Lesson: Gate 3 caught a denomination mismatch (thousands vs millions)
 Principle reinforced: #18 (sum checks are proof)
 ```
 
-These logs feed into `/retro` for continuous improvement.
+These logs feed into `/lessons` for continuous improvement.
 
 ---
 
