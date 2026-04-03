@@ -335,3 +335,13 @@ This artifact is consumed by `/verify` when proving the model correct.
     ```
     warehouse_query("SELECT table_schema, table_name, table_type FROM information_schema.tables WHERE table_schema LIKE '%ws_%'")
     ```
+
+12. **Changing bronze table format (wide→long) without planning downstream model
+    updates.** Changing a 40-column wide table to a 5-column long table
+    (`metric_name`, `metric_value`) means every silver/gold model that selected
+    specific columns like `n_ab` or `total_revenue` will break. The `auto_apply`
+    failure on `sql_model_save` is the system correctly refusing to apply an
+    incomplete migration — it's not a bug. Rule: before changing bronze format,
+    list every downstream model and plan the column updates before touching bronze.
+    `force=True` on republish is required when the schema changes (it drops and
+    recreates the table — safe when the schema change is intentional).

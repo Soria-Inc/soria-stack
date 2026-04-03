@@ -34,6 +34,13 @@ typos), #6 (don't mutate outputs).
 the group IDs, table names, and schema. If /plan exists, check if it specified
 V-phase verification criteria.
 
+**Verify workspace identity before any write op.** Context handoffs often carry
+stale or wrong workspace IDs. Before calling `value_manage`, confirm:
+```
+workspace_manage(operation="list")
+```
+Find the workspace by name/scraper. Never assume the workspace ID from context.
+
 ## Skill routing (always active)
 
 When the user's intent shifts mid-conversation, invoke the matching skill —
@@ -69,6 +76,14 @@ Before mapping anything, understand the scope.
 For each group, check value mapping status:
 ```
 value_manage(operation="read", group_id="...")
+```
+
+**Schema mappings are workspace-scoped.** If `database_query` on `schema_mappings`
+returns zero rows, you're hitting the public schema. Always pass `workspace_id`
+when looking up entities created in that workspace:
+```
+database_query("SELECT id FROM schema_mappings WHERE name = 'metric_name'",
+               workspace_id="...")
 ```
 
 Present a status table:
@@ -161,6 +176,12 @@ succession in the SQL model (Principle #9).
 
 These aren't variants — they're different things. Each gets its own canonical.
 
+### How canonicals are created — do NOT create them manually
+Map any unmapped value to another unmapped value and the system auto-promotes
+the target to canonical. Every other value with that same text across all files
+gets mapped automatically. Never create canonical records by hand — just
+map unmapped-to-unmapped and let the system handle it.
+
 ---
 
 ## Step 4: Execute Mappings
@@ -223,10 +244,18 @@ the semantic join.
 
 After all mappings are done:
 
-1. **Zero unmapped check:** All columns should show 0 unmapped values
-2. **Sample check:** Query the warehouse with mapped values and verify they
-   look right in context
-3. **Completeness check:** Do the mapped values cover all the time periods
+1. **Unmapped count check:** Residual unmapped values are legitimate — they
+   represent single-year-only concepts with no cross-era equivalent. Forcing
+   them into canonicals is wrong. Present the count and explain what they are:
+   "38 unmapped = 38 metrics that appear in only one year, no cross-year match."
+   Only escalate if a column has unexpectedly high unmapped counts (>20% of values).
+2. **Ordering check:** Mapping must complete before warehouse publish. Value
+   mappings are applied at publish time. If you published before mapping was
+   complete, re-publish with `force=True` to get normalized values into the
+   warehouse.
+3. **Sample check:** Query the warehouse with mapped values and verify they
+   look right in context.
+4. **Completeness check:** Do the mapped values cover all the time periods
    you need? Any gaps where a canonical has data in 2015-2019 but not 2020+?
 
 ---
@@ -290,3 +319,19 @@ ARTIFACT
 
 5. **Mapping numeric or date columns.** Values like "2020-07" or "1234.56"
    don't need canonicals. Only map categorical string columns.
+
+6. **Pasting UUID prefixes.** `bd1cb019` causes "badly formed hexadecimal UUID
+   string." Always query for the full ID:
+   ```
+   database_query("SELECT id FROM schema_mappings WHERE name = 'metric_name'",
+                  workspace_id="...")
+   ```
+
+7. **Using the word "promote" for mapping operations.** "Canonical promotion"
+   (making a value canonical via `value_manage`) and "workspace promotion to prod"
+   (`workspace_manage(promote)`) are completely different operations. Say
+   "make canonical" or "publish to warehouse" — never "promote" for mapping.
+
+8. **Treating residual unmapped values as errors.** After a complete mapping pass,
+   unmapped = "no cross-era equivalent exists." It's correct data. Don't try to
+   force mappings that aren't semantically valid.

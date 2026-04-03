@@ -382,3 +382,11 @@ before retrying blindly.** Use `logfire_query_run` to query recent traces.
      a vendor portal behind MFA)
    Never pivot to manual upload on your own. If the scraper is blocked, say so
    and present the options — don't silently switch to uploading.
+
+9. **Not using force=True when republishing after a schema change.** If the
+   warehouse table already exists with a different schema (e.g., you changed
+   from wide-format to long-format), `warehouse_manage(publish=True)` fails with
+   "Table does not have a column with name 'x'". Use `force=True` to drop and
+   recreate the table. It's safe when the schema change is intentional — but
+   only run it after completing all downstream model updates (see /dashboard
+   anti-pattern #12), or those will break.
