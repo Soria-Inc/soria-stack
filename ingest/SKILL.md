@@ -371,3 +371,14 @@ before retrying blindly.** Use `logfire_query_run` to query recent traces.
 7. **Using raw HTTP libraries.** Never import `curl_cffi`, `requests`, or `httpx`
    in scraper code. Use `get_html()` / `get_json()` — they have the proxy and
    Browser Use escalation built in. Raw HTTP bypasses all fallback protection.
+
+8. **Manual upload as a workaround for scraping failures.** If a scraper fails,
+   the fix is to fix the scraper — not to manually download the files and upload
+   them via `scraper_confirm_uploads`. Manual upload creates a one-time pipeline
+   that breaks the next time data updates. The whole point of Gate 1 is building
+   a repeatable scraper. Manual upload is ONLY acceptable when:
+   - The human explicitly asks for it ("just upload these files")
+   - The source genuinely has no scrapable URL (e.g., emailed reports, PDFs from
+     a vendor portal behind MFA)
+   Never pivot to manual upload on your own. If the scraper is blocked, say so
+   and present the options — don't silently switch to uploading.
