@@ -1,14 +1,14 @@
 ---
 name: lessons
-version: 2.0.0
+version: 3.0.0
 description: |
   Data pipeline retrospective — reviews recent pipeline work, identifies patterns
   in what went well and what failed, proposes principle updates to ETHOS.md.
   Reads skill artifacts, searches Claude Code session transcripts, and categorizes
   lessons learned. The continuous improvement loop for SoriaStack.
-  Use when asked to "run a retro", "what did we learn", "review recent work",
+  Use when asked to "run lessons", "what did we learn", "review recent work",
   "what went wrong", or periodically after a batch of pipeline work.
-  Proactively suggest after completing 3+ pipeline sessions without a retro.
+  Proactively suggest after completing 3+ pipeline sessions without a lessons review. (soria-stack)
 allowed-tools:
   - Read
   - Bash
