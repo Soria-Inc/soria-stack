@@ -83,6 +83,41 @@ must see and approve the work before you proceed.
    - Save, then run
 5. Verify: show file count, sample filenames, date range covered
 
+### HTTP waterfall rule
+
+**Always use `get_html()` / `get_json()`.** They auto-escalate through three tiers:
+1. Direct HTTP request
+2. Residential proxy
+3. Browser Use CDP (stealth browser — bypasses Cloudflare, DataDome, AWS WAF)
+
+`.gov` domains skip proxy (tunnels always fail on .gov) and go direct → Browser Use.
+
+**Never import `curl_cffi`, `requests`, or `httpx` directly.** You lose all fallback
+protection. A scraper that uses raw HTTP will die on the first bot-protection hit
+instead of escalating. This has caused real failures (TN Medicaid: SSL reset killed
+`curl_cffi`, but `get_html()` would have auto-escalated to Browser Use and worked).
+
+### BI dashboard sources (Tableau, Power BI)
+
+If the URL points to a BI dashboard (`tableau.*`, `app.powerbi.com`, `powerbigov.us`,
+or similar), the data lives behind proprietary API endpoints — not in downloadable files.
+
+**Approach:**
+1. **Detect platform** from the URL pattern. If ambiguous, open in Chrome DevTools,
+   screenshot, and check XHR endpoints to identify the platform.
+2. **Recon with Chrome DevTools** — navigate to the URL, open the Network tab, and
+   identify the data endpoints:
+   - Tableau: look for `bootstrapSession` responses (VizQL protocol)
+   - Power BI: look for `querydata`, `conceptualschema`, `modelsAndExploration` responses
+3. **Write a scraper** that replays those data endpoints using `get_html()` / `get_json()`.
+   Most BI dashboards work with plain HTTP — no `needs_browser` needed. The scraper
+   parses the protocol response and produces CSV output.
+4. If plain HTTP doesn't work (auth walls, session tokens), use `needs_browser = True`
+   with `self.page.evaluate()` to replay queries from inside the browser context where
+   cookies and auth "just work."
+
+The rest of the pipeline (Gates 2-5) is the same as any other source.
+
 **Present to human:**
 ```
 Scraper: cms_hospital_cost_report
@@ -332,3 +367,7 @@ before retrying blindly.** Use `logfire_query_run` to query recent traces.
 
 6. **Doing value mapping here.** Value mapping is /map. This skill gets data
    into the warehouse. /map normalizes it. Don't conflate the two.
+
+7. **Using raw HTTP libraries.** Never import `curl_cffi`, `requests`, or `httpx`
+   in scraper code. Use `get_html()` / `get_json()` — they have the proxy and
+   Browser Use escalation built in. Raw HTTP bypasses all fallback protection.
