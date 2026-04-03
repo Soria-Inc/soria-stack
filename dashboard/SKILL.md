@@ -306,3 +306,32 @@ This artifact is consumed by `/verify` when proving the model correct.
 7. **Averaging ratios.** `AVG(margin_pct)` gives equal weight to 10-bed and 1000-bed hospitals.
 
 8. **Un-materialized bronze.** Always materialize before building downstream models.
+
+9. **Assuming sql_model_save auto-materializes MotherDuck.** It does not. Saving
+   SQL to a workspace only writes the model definition to Postgres. The MotherDuck
+   view does not exist until you explicitly call `warehouse_materialize`. After
+   saving models, always materialize in dependency order:
+   ```
+   warehouse_materialize(silver.stg_x, workspace="ws_release_branch_934a24ce")
+   warehouse_materialize(gold.x, workspace="ws_release_branch_934a24ce")
+   warehouse_materialize(platinum.x, workspace="ws_release_branch_934a24ce")
+   ```
+   Silver must go first so that when gold is materialized, schema refs to silver
+   are rewritten to the workspace schema automatically.
+
+10. **Verifying workspace materialization against the prod schema.** After calling
+    `warehouse_materialize` in a workspace, the materialized view is at
+    `{layer}__{postgres_schema}.{model_name}` — NOT `{layer}.{model_name}`.
+    If you run `SELECT COUNT(*) FROM silver.stg_x` you're hitting prod (wrong).
+    Always verify against the workspace schema:
+    ```
+    warehouse_query("SELECT COUNT(*) FROM silver__ws_release_branch_934a24ce.stg_x")
+    ```
+
+11. **Misreading motherduck_database = NULL as "no MotherDuck state".** A workspace
+    with `motherduck_database = NULL` shares the prod MotherDuck database but uses
+    separate schemas. The distinction is database vs schema — same database,
+    different schema. Check what's materialized:
+    ```
+    warehouse_query("SELECT table_schema, table_name, table_type FROM information_schema.tables WHERE table_schema LIKE '%ws_%'")
+    ```

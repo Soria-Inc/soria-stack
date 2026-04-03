@@ -126,6 +126,19 @@ type because the AI will initially believe the "OK" response.
      ```
    - **Model not in workspace:** `warehouse_materialize` no-ops if the model
      doesn't have a `SqlModelCode` record in the target workspace.
+   - **Wrong schema for workspace objects:** After `warehouse_materialize` in a
+     workspace, the object lives at `{layer}__{postgres_schema}.{model_name}` —
+     NOT `{layer}.{model_name}`. Querying `silver.stg_x` hits prod, not the
+     workspace. Check what's actually materialized in the workspace:
+     ```
+     warehouse_query("SELECT table_schema, table_name, table_type FROM information_schema.tables WHERE table_schema LIKE '%ws_%'")
+     ```
+   - **`motherduck_database = NULL` misread:** NULL does NOT mean no MotherDuck
+     state. The workspace shares the prod MotherDuck database but uses separate
+     schemas: `{layer}__{postgres_schema}` in the same database.
+   - **`sql_model_save` does not auto-materialize:** Saving a model writes the
+     SQL definition to Postgres only. Must call `warehouse_materialize` explicitly
+     in dependency order: silver → gold → platinum, each with `workspace="ws_xxx"`.
    - **Extractor stamp filtering:** Files may be filtered out before `force=True`
      is checked. Look for files with `extractor_id` already set.
    - **Event bus crash:** CSV saved but `event_bus.publish()` failed after —

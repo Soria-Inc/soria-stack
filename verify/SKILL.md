@@ -142,12 +142,27 @@ correctly through bronze → silver → gold → platinum.
    | Platinum | platinum.insurer_kpi_dashboard | revenue='$371.6B' | yes |
    ```
 
-3. **Check for fan-out or fan-in bugs:**
+3. **In workspace contexts, use workspace schema, not prod schema:**
+   After `warehouse_materialize` in a workspace, models live at
+   `{layer}__{postgres_schema}.{model_name}` — NOT `{layer}.{model_name}`.
+   ```sql
+   -- WRONG (hits prod):
+   SELECT COUNT(*) FROM silver.stg_x
+   -- CORRECT (hits workspace):
+   SELECT COUNT(*) FROM silver__ws_release_branch_xxxxx.stg_x
+   ```
+   If the workspace table has 0 rows or doesn't exist: `sql_model_save` does NOT
+   auto-materialize. Call `warehouse_materialize` in dependency order:
+   silver → gold → platinum, each with `workspace="ws_release_branch_xxxxx"`.
+   `motherduck_database = NULL` does NOT mean no MotherDuck state — it means the
+   workspace shares the prod database but uses separate schemas.
+
+4. **Check for fan-out or fan-in bugs:**
    - Does joining in gold multiply rows?
    - Does dedup in silver drop too many rows?
    - Does aggregation in platinum collapse the right dimensions?
 
-4. **Verify ratio computation:**
+5. **Verify ratio computation:**
    - Confirm ratios are computed AFTER aggregation, not averaged
    - Test with a known example
 
