@@ -259,6 +259,166 @@ that are really just un-materialized views.
 
 ---
 
+## Pivot Dashboard SQL Pattern
+
+Canonical CTE structure for any pivot dashboard with time-series columns and ratio metrics:
+
+```sql
+/*
+  @dashboard:
+    chart:
+      type: ag-pivot
+      server_side_pivot: true
+      default_top_n: 15
+      exclude_columns:
+        - segment              -- filter column, not displayed
+        - prior_year_enrollment -- intermediate, not displayed
+      pivot:
+        rowField: parent_organization
+        columnField: reporting_month
+        valueField: enrollment
+        valueOptions:
+          - field: enrollment
+            label: "Enrollment"
+            format: number
+          - field: market_share_pct
+            label: "Market Share %"
+            format: percent
+            rollup: share
+            rollup_base: enrollment
+          - field: yoy_delta_pct
+            label: "YoY Growth %"
+            format: percent
+            rollup: growth
+            rollup_base: enrollment
+            rollup_delta: yoy_delta
+          - field: yoy_delta
+            label: "YoY Change"
+            format: number
+      default_filters:
+        - type: segment
+          column: segment
+          default_values: ["MA"]
+*/
+MODEL (
+  grain (segment, distribution, parent_organization, reporting_month)
+);
+
+WITH
+  src AS (SELECT * FROM silver.source_table),
+
+  -- Step 1: Aggregate to the row dimension grain
+  agg AS (
+    SELECT segment, distribution, parent_organization,
+      reporting_date,
+      STRFTIME(reporting_date, '%Y-%m') AS reporting_month,
+      SUM(enrollment) AS enrollment
+    FROM src
+    GROUP BY ALL
+  ),
+
+  -- Step 2: Join prior year AT THE SAME GRAIN
+  prior AS (
+    SELECT c.*, p.enrollment AS prior_year_enrollment
+    FROM agg c
+    LEFT JOIN agg p
+      ON c.parent_organization = p.parent_organization
+      AND c.segment = p.segment
+      AND c.distribution = p.distribution
+      AND c.reporting_date = p.reporting_date + INTERVAL 12 MONTH
+  ),
+
+  -- Step 3: Compute ratio metrics at this grain
+  metrics AS (
+    SELECT *,
+      ROUND(enrollment * 100.0 / NULLIF(
+        SUM(enrollment) OVER (PARTITION BY segment, distribution, reporting_month), 0
+      ), 2) AS market_share_pct,
+      enrollment - prior_year_enrollment AS yoy_delta,
+      ROUND((enrollment - prior_year_enrollment) * 100.0
+        / NULLIF(prior_year_enrollment, 0), 2) AS yoy_delta_pct
+    FROM prior
+  )
+
+SELECT * FROM metrics
+```
+
+Key rules this template encodes:
+1. **Grain matches the row dimension** — no finer keys than what `rowField` / `rowFieldOptions` need
+2. **Ratio metrics partition by ALL filter columns** — `PARTITION BY segment, distribution, reporting_month`, not just `reporting_month`
+3. **YoY joined at the model grain** — matching on segment + distribution + org + date, not just org + date
+4. **Filter columns in output but excluded** — `exclude_columns` lists segment, distribution, etc.
+5. **Raw components alongside ratios** — enrollment ships with market_share_pct so rollup can recompute
+
+---
+
+## Controls & SQL Interaction
+
+### Control types
+
+| Type | UI Element | When to use |
+|------|-----------|-------------|
+| `segment` | Toggle buttons (single-select with "All") | 2-7 fixed categories (LOB, plan type, network) |
+| `list` | Multi-select dropdown with search | Many values (companies, states, contracts) |
+| `date_aggregation` | Year / Quarter / Month selector | Time grouping |
+
+### How filter columns flow through SQL
+
+Filter columns (segment, distribution, network) must appear in **three places**:
+
+1. **In the model grain** — `grain (segment, distribution, parent_organization, reporting_month)`
+2. **In the SELECT output** — the frontend needs the column to filter on
+3. **In `exclude_columns`** — present in data but not displayed as a pivot column
+
+If a filter column is missing from the grain, the model aggregates across it and the filter has nothing to filter. If it's missing from `exclude_columns`, it shows up as a data column in the pivot.
+
+### Ratio metric partitioning
+
+Ratio metrics (market share, YoY %) must `PARTITION BY` every filter column:
+
+```sql
+-- CORRECT: partitions by segment + distribution + month
+ROUND(enrollment * 100.0 / NULLIF(
+  SUM(enrollment) OVER (PARTITION BY segment, distribution, reporting_month), 0
+), 2) AS market_share_pct
+
+-- WRONG: partitions only by month → 171% market share when segment='All'
+ROUND(enrollment * 100.0 / NULLIF(
+  SUM(enrollment) OVER (PARTITION BY reporting_month), 0
+), 2) AS market_share_pct
+```
+
+When the frontend filters to segment='MA', the PARTITION BY must produce shares that sum to 100% within that segment. If you only partition by month, you get shares of the total across all segments — which is a different (and usually wrong) metric.
+
+---
+
+## Rollup DSL
+
+For pivot tables with `default_top_n`, rows beyond the top N are grouped into an "Other" row. Additive metrics can just SUM, but ratio metrics need recomputation formulas specified in `valueOptions`:
+
+| Rollup type | Formula for "Other" row | Config |
+|-------------|------------------------|--------|
+| _(none)_ | `SUM(field)` | Default for additive fields (enrollment, yoy_delta) |
+| `share` | `SUM(rollup_base) / total * 100` | `rollup: share`, `rollup_base: enrollment` |
+| `growth` | `SUM(rollup_delta) / (SUM(rollup_base) - SUM(rollup_delta)) * 100` | `rollup: growth`, `rollup_base: enrollment`, `rollup_delta: yoy_delta` |
+
+Without rollup annotations, ratio metrics for the "Other" row will be summed — producing nonsensical values like 847% market share.
+
+---
+
+## Pre-Save Checklist (Pivot Dashboards)
+
+Before calling `sql_model_save` on a pivot dashboard model, verify:
+
+1. **Grain matches row dimension** — no finer keys than what `rowField` / `rowFieldOptions` need
+2. **Ratio metrics computed at model grain** — not at a finer grain that gets summed later
+3. **YoY joined at model grain** — not on sub-entity keys that change year to year
+4. **Filter columns in output but excluded** — `exclude_columns` lists segment, distribution, etc.
+5. **Rollup DSL on ratio valueOptions** — `share` for market share, `growth` for YoY %
+6. **Raw components available** — include enrollment alongside market_share_pct so rollup can recompute
+
+---
+
 ## Artifact Output
 
 At the end of a model session, write a model spec:
