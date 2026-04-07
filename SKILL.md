@@ -6,15 +6,17 @@ description: |
   session before using any other soria-stack skill or calling any Soria MCP tool.
   The Soria MCP tools (sumo_*, news_*, mcp__sumo__*) are deferred at startup and
   will fail unless /tools has loaded them via ToolSearch.
-  Ten cognitive modes: /tools (load MCP tools), /status (what exists today),
+  Eleven cognitive modes: /tools (load MCP tools), /status (what exists today),
   /plan (ETVLR orchestrator), /ingest (scrape+extract+publish), /map (value mapping),
   /dashboard (grain-first SQL), /verify (prove it with evidence), /diagnose (diagnose failures),
-  /newsroom (news ops), /lessons (learn from what happened).
+  /ticket (file structured tickets mid-session), /newsroom (news ops),
+  /lessons (learn from what happened).
   Suggest the right skill by stage: starting a session → /tools; investigating what
   exists → /status; planning work → /plan; building a pipeline → /ingest;
   normalizing values → /map; designing SQL models → /dashboard; verifying data or
   reviewing SQL or profiling data quality → /verify; something broke or isn't working
-  → /diagnose; news pipeline → /newsroom; reviewing recent work → /lessons.
+  → /diagnose; filing a ticket for unexpected work or bugs → /ticket;
+  news pipeline → /newsroom; reviewing recent work → /lessons.
 allowed-tools:
   - Read
   - Bash
@@ -51,6 +53,7 @@ and what to verify.
 | Reviewing SQL quality | `/verify` (Mode 4) |
 | Profiling data before writing SQL | `/verify` (Mode 5) |
 | Something broke or isn't working | `/diagnose` |
+| Hit a bug, need to file a ticket | `/ticket` |
 | Promoting to production | `/promote` (requires human approval) |
 | Working with the news pipeline | `/newsroom` |
 | Reviewing recent work for lessons | `/lessons` |
@@ -64,6 +67,7 @@ and what to verify.
                                                 ↑
                                      (verify runs after any phase)
    + /diagnose (when something breaks — can enter from any phase)
+   + /ticket (file a ticket mid-session — can enter from any phase)
    + /promote (ONLY when human says "push to prod")
    + /newsroom (separate domain)
    + /lessons (periodic)
