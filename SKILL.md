@@ -6,19 +6,20 @@ description: |
   session before using any other soria-stack skill or calling any Soria MCP tool.
   The Soria MCP tools (sumo_*, news_*, mcp__sumo__*) are deferred at startup and
   will fail unless /tools has loaded them via ToolSearch.
-  Thirteen skills: /tools (load MCP tools), /status (what exists today),
+  Fourteen skills: /tools (load MCP tools), /status (what exists today),
   /plan (ETVLR orchestrator), /ingest (scrape+extract+publish), /map (value mapping),
   /dashboard (grain-first SQL + data survey + SQL review + semantic checks),
   /verify (prove it — semantic checks foundation + pipeline/model/semantic verify),
   /smoke (adversarial browser QA), /diagnose (diagnose failures),
+  /ticket (file structured tickets mid-session),
   /promote (push to prod), /preview (render dashboards in chat),
   /newsroom (news ops), /lessons (learn from what happened).
   Suggest the right skill by stage: starting a session → /tools; investigating what
   exists → /status; planning work → /plan; building a pipeline → /ingest;
   normalizing values → /map; profiling data or designing SQL models or reviewing SQL
   → /dashboard; proving data correct → /verify; testing live dashboard UI → /smoke;
-  something broke → /diagnose; news pipeline → /newsroom; reviewing recent work
-  → /lessons.
+  something broke → /diagnose; filing a ticket → /ticket; news pipeline → /newsroom;
+  reviewing recent work → /lessons.
 allowed-tools:
   - Read
   - Bash
@@ -55,6 +56,7 @@ and what to verify.
 | Testing the live dashboard in a browser | `/smoke` |
 | Wanting to see dashboard data in chat | `/preview` |
 | Something broke or isn't working | `/diagnose` |
+| Hit a bug, need to file a ticket | `/ticket` |
 | Promoting to production | `/promote` (requires human approval) |
 | Working with the news pipeline | `/newsroom` |
 | Reviewing recent work for lessons | `/lessons` |
@@ -70,6 +72,7 @@ and what to verify.
                                built into /dashboard)   foundation of /verify)
    + /smoke (browser QA — after deploy)
    + /diagnose (when something breaks — can enter from any phase)
+   + /ticket (file a ticket mid-session — can enter from any phase)
    + /promote (ONLY when human says "push to prod")
    + /preview (render dashboard data in chat)
    + /newsroom (separate domain)

@@ -316,40 +316,21 @@ Extraction produced wrong, incomplete, or truncated data.
 
 ## Creating a Linear Ticket
 
-When the disposition is **Ticket**, create one immediately. Don't just say
-"this needs a ticket" — make it.
+When the disposition is **Ticket**, invoke `/ticket`. Don't just say
+"this needs a ticket" — invoke the skill immediately. /ticket will capture
+your diagnostic findings, check for duplicates, and file a structured ticket.
 
 ### When to ticket vs fix inline
 
 | Situation | Action |
 |-----------|--------|
-| Backend code change needed (error swallowing, wrong logic) | Ticket |
-| Infrastructure config (pool size, timeout, container cleanup) | Ticket |
+| Backend code change needed (error swallowing, wrong logic) | `/ticket` |
+| Infrastructure config (pool size, timeout, container cleanup) | `/ticket` |
 | SQL model fix (wrong join, missing filter) | Fix inline |
 | Re-materialization needed | Fix inline |
 | Re-extraction with adjusted parameters | Fix inline via `/ingest` |
 | Stale workspace, needs recreation | Fix inline |
-| Systemic LLM extraction failure | Ticket |
-
-### Ticket template
-
-```
-mcp__linear__save_issue(
-  title="[component]: short description of the bug",
-  team="Engineering",
-  description="## Bug\n\n[1-2 sentence description]\n\n## Reproduction\n\n[Exact steps or tool call that triggers the issue]\n\n## Expected\n\n[What should happen]\n\n## Actual\n\n[What happens instead]\n\n## Root cause\n\n[What you found during debugging — be specific about file/function if known]\n\n## Suggested fix\n\n[If you have one]\n\n---\n_Filed from /diagnose skill during Claude Code session_",
-  priority=3,
-  labels=["bug"]
-)
-```
-
-**Priority guide:**
-- 1 (Urgent): Production data is wrong and visible to users
-- 2 (High): Silent failure causing data loss or pipeline blockage
-- 3 (Normal): Bug that has a workaround
-- 4 (Low): Cosmetic or minor inconvenience
-
-After creating, report the issue identifier (e.g., `ENG-123`) to the user.
+| Systemic LLM extraction failure | `/ticket` |
 
 ---
 
