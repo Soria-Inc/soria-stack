@@ -1,12 +1,16 @@
 ---
 name: dashboard
-version: 3.0.0
+version: 4.0.0
 description: |
   Design and build SQL models that answer specific questions.
   Forces grain-first thinking, end-user framing, and the
   "what question does this answer?" conversation before any SQL.
+  Includes data quality survey (eyes on data before SQL), SQL review
+  checklist (pre-save code quality), and semantic check building
+  (companion gold model for every platinum dashboard).
   Use when asked to "build a model", "make a dashboard", "write the SQL",
-  "create a pivot table", or "show me the data".
+  "create a pivot table", "show me the data", "profile this table",
+  "review the SQL", or "build semantic checks".
   Proactively invoke this skill (do NOT write SQL models ad-hoc) when the
   user wants to build models or dashboards. Three Questions must be answered first.
   Use after /ingest or /map, before /verify. (soria-stack)
@@ -52,10 +56,9 @@ do NOT continue ad-hoc:
 - User wants to fix extraction issues → invoke `/ingest`
 - User wants to fix value mappings → invoke `/map`
 - User says "verify this", "spot check", "is this correct" → invoke `/verify`
-- User says "review the SQL" → invoke `/verify` (Mode 4: SQL Review)
-- User wants to profile data before writing SQL → invoke `/verify` (Mode 5)
+- User wants to test the live dashboard in a browser → invoke `/smoke`
 
-**After /dashboard completes, suggest `/verify`** (Mode 2: Model Verify + Mode 4: SQL Review).
+**After /dashboard completes, suggest `/verify`** (Mode 2: Model Verify + Mode 3: Semantic Verify).
 **NEVER promote to prod from here.** If the user says "push to prod", invoke `/promote`.
 
 ---
@@ -446,6 +449,78 @@ ARTIFACT
 ```
 
 This artifact is consumed by `/verify` when proving the model correct.
+
+---
+
+## Data Quality Survey (before writing SQL)
+
+Before writing SQL models, get your eyes on the data. Run these 4 checks
+against the warehouse table you'll be modeling:
+
+**Check 1: Schema & Row Counts** — `DESCRIBE {table}`, row count, row count
+by time period, `LIMIT 5` sample. Report: column inventory, time range, shape.
+
+**Check 2: Value Distributions** — For categoricals: top values by count.
+For numerics: min, max, avg, stddev, distinct count. Report: unexpected
+entries, impossible values, cardinality.
+
+**Check 3: Length & Format Outliers** — `LEN({col})` distribution for string
+columns. Report: mixed formats, encoding issues.
+
+**Check 4: NULL Analysis** — NULL rate per column. Report: concentration
+patterns, recommended handling.
+
+Skip this step if you already know the data well from prior sessions.
+
+---
+
+## SQL Review Checklist (pre-save)
+
+Before calling `sql_model_save`, review the SQL:
+
+1. **CTE hygiene** — Every CTE earns its place, has the right prefix (`src_`,
+   `flt_`, `clc_`, `agg_`, `wnd_`, `ded_`, `jnd_`, `pvt_`), no over-splitting
+   or under-splitting.
+2. **Conventions** — `column_descriptions` on every column, no joins in silver,
+   ratios after aggregation, `QUALIFY ROW_NUMBER()` for dedup.
+3. **No dead code** — No unreferenced CTEs, unselected columns, or no-op WHEREs.
+4. **Dashboard integration (platinum)** — `@dashboard` block present,
+   `@overview` present, `valueOptions` complete, rollup DSL on ratio metrics.
+
+---
+
+## Semantic Checks (after platinum model)
+
+Every platinum dashboard ships with a companion `gold.semantic_{domain}` model.
+Build it as part of the /dashboard workflow, not as an afterthought.
+
+### Steps
+
+1. **Auto-generate algebraic + smoothness checks** — these need no research:
+   - Parts sum to whole (shares → 100%, network categories → total)
+   - Derived columns match their formula (yoy_delta = enrollment - prior)
+   - No company swings >50% growth or >40% decline in one year
+   - No month-over-month total change >5%
+
+2. **Research external benchmarks** — use Exa/Perplexity to find published
+   statistics for bounded_range, CAGR, structural_break, and monotonicity
+   checks. Save source URLs.
+
+3. **Build the gold model** — one CTE per check category, all producing the
+   standard output schema (see `/verify` for the schema definition):
+   ```
+   check_category | check_name | check_label | grain | period |
+   value | expected_low | expected_high | pass | source | source_url | note
+   ```
+
+4. **Materialize and run** — materialize as TABLE, query for failures.
+
+5. **Investigate failures** — classify each as pipeline bug, M&A, source
+   limitation, known event, or threshold issue.
+
+### ⛔ GATE: SEMANTIC CHECKS PASS
+All failures must be investigated and classified before DONE.
+Zero unexplained failures.
 
 ---
 

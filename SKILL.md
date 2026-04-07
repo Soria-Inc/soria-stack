@@ -1,20 +1,24 @@
 ---
 name: soria-stack
-version: 3.0.0
+version: 4.0.0
 description: |
   Data pipeline skills for Soria Analytics. IMPORTANT: Run /tools FIRST in every
   session before using any other soria-stack skill or calling any Soria MCP tool.
   The Soria MCP tools (sumo_*, news_*, mcp__sumo__*) are deferred at startup and
   will fail unless /tools has loaded them via ToolSearch.
-  Ten cognitive modes: /tools (load MCP tools), /status (what exists today),
+  Thirteen skills: /tools (load MCP tools), /status (what exists today),
   /plan (ETVLR orchestrator), /ingest (scrape+extract+publish), /map (value mapping),
-  /dashboard (grain-first SQL), /verify (prove it with evidence), /diagnose (diagnose failures),
+  /dashboard (grain-first SQL + data survey + SQL review + semantic checks),
+  /verify (prove it — semantic checks foundation + pipeline/model/semantic verify),
+  /smoke (adversarial browser QA), /diagnose (diagnose failures),
+  /promote (push to prod), /preview (render dashboards in chat),
   /newsroom (news ops), /lessons (learn from what happened).
   Suggest the right skill by stage: starting a session → /tools; investigating what
   exists → /status; planning work → /plan; building a pipeline → /ingest;
-  normalizing values → /map; designing SQL models → /dashboard; verifying data or
-  reviewing SQL or profiling data quality → /verify; something broke or isn't working
-  → /diagnose; news pipeline → /newsroom; reviewing recent work → /lessons.
+  normalizing values → /map; profiling data or designing SQL models or reviewing SQL
+  → /dashboard; proving data correct → /verify; testing live dashboard UI → /smoke;
+  something broke → /diagnose; news pipeline → /newsroom; reviewing recent work
+  → /lessons.
 allowed-tools:
   - Read
   - Bash
@@ -46,10 +50,10 @@ and what to verify.
 | Saying "let's work on X" or "come up with a plan" | `/plan` |
 | Ready to scrape, extract, or publish | `/ingest` |
 | Normalizing values across eras | `/map` |
-| Building SQL models or dashboards | `/dashboard` |
-| Checking if data is correct | `/verify` (Modes 1-3) |
-| Reviewing SQL quality | `/verify` (Mode 4) |
-| Profiling data before writing SQL | `/verify` (Mode 5) |
+| Profiling data, building SQL models, or reviewing SQL | `/dashboard` |
+| Checking if data is correct, proving it | `/verify` |
+| Testing the live dashboard in a browser | `/smoke` |
+| Wanting to see dashboard data in chat | `/preview` |
 | Something broke or isn't working | `/diagnose` |
 | Promoting to production | `/promote` (requires human approval) |
 | Working with the news pipeline | `/newsroom` |
@@ -61,10 +65,13 @@ and what to verify.
 /tools (always first)
    ↓
 /status → /plan → /ingest → /map → /dashboard → /verify → /promote
-                                                ↑
-                                     (verify runs after any phase)
+                                        ↑              ↑
+                              (survey + SQL review     (semantic checks
+                               built into /dashboard)   foundation of /verify)
+   + /smoke (browser QA — after deploy)
    + /diagnose (when something breaks — can enter from any phase)
    + /promote (ONLY when human says "push to prod")
+   + /preview (render dashboard data in chat)
    + /newsroom (separate domain)
    + /lessons (periodic)
 ```

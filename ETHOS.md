@@ -252,3 +252,13 @@ The pipeline is **Extract → Transform → Value-map → Load**. Transform is a
 
 ### 27. Functions over frameworks
 Pipeline utilities (file normalization, header detection, proxy management, Gemini extraction) should be composable functions you can call, not a rigid framework you're forced through. A base scraper with deletable defaults beats a mandatory template.
+
+### 28. Every dashboard ships with semantic checks
+A platinum model without a companion `gold.semantic_{domain}` model is incomplete.
+The semantic checks table validates data against external benchmarks and self-consistency
+rules across the full time series. `algebraic` and `smoothness` checks are mandatory
+(auto-generatable). `bounded_range`, `monotonicity`, `cagr`, and `structural_break`
+checks require external research — use Exa/Perplexity to find published statistics, then
+encode them with source URLs. All checks produce a standard output schema (defined in
+`/verify`). The semantic table is the durable, automated version of Tier 2 and Tier 3
+verification — once built, it re-runs every data refresh.

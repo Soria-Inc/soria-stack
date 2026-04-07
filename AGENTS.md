@@ -1,7 +1,7 @@
 # SoriaStack — Data Pipeline Skills
 
 SoriaStack is a collection of SKILL.md files that give AI agents structured roles for
-data pipeline work. Nine cognitive modes following the ETVLR framework:
+data pipeline work. Thirteen skills following the ETVLR framework:
 Extract → Transform → Value-map → Load → Represent.
 
 ## Available skills
@@ -15,17 +15,19 @@ Skills live in their own directories. Invoke them by name (e.g., `/status`).
 | `/plan` | ETVLR orchestrator — break work into phases, plan verification upfront. |
 | `/ingest` | Scrape, organize, extract, and publish with five hard-stop gates. |
 | `/map` | Value mapping — normalize raw values to canonical forms across eras. |
-| `/dashboard` | Design bronze → silver → gold → platinum SQL models. Grain-first. |
-| `/verify` | Five modes: pipeline, model, analytical, SQL review, data quality profile. |
+| `/dashboard` | Design bronze → silver → gold → platinum SQL models. Grain-first. Includes data survey, SQL review checklist, and semantic check building. |
+| `/verify` | Prove data is correct. Semantic checks foundation — 6 categories, standard schema, investigation workflow. Pipeline verify, model verify, semantic verify. |
+| `/smoke` | Adversarial browser QA — headless browser clicks every dashboard control, checks for breakage. |
 | `/diagnose` | Diagnose failures: silent failures, data traces, schema mismatches, infra issues. Creates Linear tickets. |
 | `/promote` | Promote workspace to production. REQUIRES human approval. Only path to prod. |
+| `/preview` | Render dashboard data as markdown tables in chat. |
 | `/newsroom` | News pipeline ops — branch management, prompt tuning, source review. |
 | `/lessons` | Review recent work, find patterns, propose principle updates. |
 
 ## Principles
 
 Read `ETHOS.md` before any data pipeline work. Includes:
-- 27 numbered data principles
+- 28 numbered data principles
 - Resolver pattern (context efficiency)
 - Completion & escalation protocol
 - Anti-sycophancy & simplicity guidance
@@ -43,14 +45,15 @@ Read `ETHOS.md` before any data pipeline work. Includes:
    ↓
 /map → mapping report (canonical values, decisions made)
    ↓
-/dashboard → model spec (grain, SQL models, dashboard config)
+/dashboard → model spec (grain, SQL models, dashboard config, semantic checks)
    ↓
-/verify → scorecard (tier results, confidence, caveats)
+/verify → scorecard (semantic check results, tier evidence, confidence)
    ↓
 /lessons → retro report (patterns, principle updates) [periodic]
 
-   + /diagnose (enters from any phase when something breaks → creates Linear tickets or fixes inline)
-
+   + /smoke (browser QA — after dashboard deploy)
+   + /diagnose (enters from any phase when something breaks)
+   + /preview (render dashboard data in chat — any time)
 ```
 
 Artifacts saved to `~/.soria-stack/artifacts/`. Each skill reads prior artifacts

@@ -1,19 +1,21 @@
 ---
 name: verify
-version: 4.0.0
+version: 5.0.0
 description: |
-  Three-tier verification: spot checks (evidence), sum checks (proof),
-  derived metric checks (gold standard). Also handles pipeline verification
-  (extraction vs source), model verification (tracing values through layers),
-  data quality profiling, SQL code review, and live dashboard QA via headless
-  browser (Mode 6).
+  Prove data is correct through evidence, not assertions. Centers on
+  semantic checks — per-domain gold models that validate data shape,
+  trends, and benchmarks across the full time series. Every dashboard
+  ships with semantic checks. Every verification starts by reading the
+  semantic table.
+  Three modes: Pipeline (extraction vs source), Model (trace through
+  layers), Semantic (investigate check failures, gap analysis).
   Never says "looks good" without showing evidence.
-  Use when asked to "verify this", "is this data correct", "check the pipeline",
-  "prove it", "validate the model", "profile the data", "review the SQL",
-  "test the dashboard", "check if the controls work", "QA this",
-  or "what does this data look like".
-  Proactively invoke this skill (do NOT claim data is correct without evidence)
-  after any /ingest gate, after /dashboard, or when data quality is in question.
+  Use when asked to "verify this", "is this data correct", "check the
+  pipeline", "prove it", "validate the model", or "what does this data
+  look like".
+  Proactively invoke this skill (do NOT claim data is correct without
+  evidence) after any /ingest gate, after /dashboard, or when data
+  quality is in question.
   Use after /ingest, /map, or /dashboard. (soria-stack)
 benefits-from: [ingest, map, dashboard, plan]
 allowed-tools:
@@ -40,22 +42,20 @@ echo "Checking for prior artifacts..."
 ls -t ~/.soria-stack/artifacts/plan-*.md ~/.soria-stack/artifacts/ingest-*.md ~/.soria-stack/artifacts/model-*.md 2>/dev/null | head -5
 ```
 
-Read `ETHOS.md` from this skill pack. Key principles: #10, #11, #17, #18, #19, #20.
+Read `ETHOS.md` from this skill pack. Key principles: #10, #11, #17, #18, #19, #20, #28.
 
 **Phase awareness:** If a /plan artifact exists, read it — it has verification
-criteria for each ETVLR phase. Run against those criteria, not just generic checks.
-If ingest or model artifacts exist, read those too for table names and schemas.
+criteria for each ETVLR phase. If ingest or model artifacts exist, read those
+too for table names and schemas.
 
 ## Skill routing (always active)
 
-When the user's intent shifts mid-conversation, invoke the matching skill —
-do NOT continue ad-hoc:
-
-- Verification reveals extraction bugs → invoke `/ingest` to fix extractor
+- Verification reveals extraction bugs → invoke `/ingest`
 - Verification reveals unmapped values → invoke `/map`
-- Verification reveals SQL issues → stay in `/verify` Mode 4, or invoke `/dashboard` to redesign
+- Verification reveals SQL issues → invoke `/dashboard`
+- Semantic checks don't exist for this domain → invoke `/dashboard` to build them
+- User wants to test the live dashboard in a browser → invoke `/smoke`
 - User wants to check pipeline status → invoke `/status`
-- User wants to build/revise the plan → invoke `/plan`
 
 **After /verify completes, suggest `/lessons`** if this was the end of a pipeline
 build, or the next ETVLR phase from /plan if verification passed.
@@ -68,8 +68,133 @@ You are a paranoid data verifier. You NEVER say "looks good" or "data appears
 correct" without showing evidence. Your job is to build the case — with tables,
 comparisons, and math — that the data is either correct or wrong.
 
-Six modes. Three tiers. Always escalate through tiers — don't stop at Tier 1
+Three modes. Three tiers. Always escalate through tiers — don't stop at Tier 1
 if Tier 2 or 3 are possible.
+
+---
+
+## Semantic Checks — The Foundation
+
+Semantic checks are gold-layer SQL models that validate data against external
+benchmarks and self-consistency rules across the full time series. They are the
+durable, automated version of what Tier 2 and Tier 3 checks do ad-hoc.
+
+Every platinum dashboard should have a companion `gold.semantic_{domain}` model.
+If one doesn't exist, that's a coverage gap — flag it, then invoke `/dashboard`
+to build it.
+
+### Architecture
+
+```
+gold.semantic_{domain}   -- per-domain, all checks for one dataset
+                            built by /dashboard, read by /verify
+```
+
+Each domain model is independent. Materialize each as a TABLE after data
+refreshes — the output is small (1,000-5,000 rows per domain), reads are
+instant. The checks are deterministic given the source data.
+
+### Output schema (every row, every domain)
+
+```
+check_category   -- which of the 6 categories
+check_name       -- machine name (for matching/dedup)
+check_label      -- human-readable label for display
+grain            -- what dimension this operates on
+period           -- time period covered
+value            -- observed value from our data
+expected_low     -- lower bound of acceptable range
+expected_high    -- upper bound of acceptable range
+pass             -- whether the check passed
+source           -- benchmark source label (or 'self-check')
+source_url       -- URL to verify the benchmark (NULL for self-checks)
+note             -- what this check validates
+```
+
+### The 6 categories
+
+| Category | What it validates | Auto-generatable? |
+|----------|------------------|-------------------|
+| **algebraic** | Parts = whole. Shares sum to ~100%. Derived columns match their formula. | Yes — always include |
+| **smoothness** | No wild swings. No company gains >50% or loses >40% in one year. No MoM total change >5%. | Yes — always include |
+| **bounded_range** | Structural constraints hold every period. Group share 15-21%. No single company >35%. Top-N concentration in expected bands. | Partially — thresholds need domain knowledge |
+| **monotonicity** | Trends go the right direction. Total enrollment increasing (pre-2026). PPO share increasing. | Needs domain knowledge |
+| **cagr** | Long-run growth rates match published history. 10-year CAGR for total market, specific companies. | Needs external research |
+| **structural_break** | Known industry events are visible in the data. CVS replaces Aetna post-2018. Humana dips in 2025. Growth slows post-2022. | Needs external research |
+
+**algebraic** and **smoothness** are mandatory for every domain — they need no
+external knowledge and catch the most common pipeline bugs.
+
+**bounded_range**, **monotonicity**, **cagr**, and **structural_break** require
+domain research (KFF, MedPAC, SEC filings, earnings transcripts). Built during
+`/dashboard` using Exa/Perplexity.
+
+### How semantic checks map to tiers
+
+| Tier | What it proves | Semantic category |
+|------|---------------|-------------------|
+| Tier 1 (Spot Checks) | Individual values correct | — (still ad-hoc) |
+| Tier 2 (Sum Checks) | Algebraic consistency | `algebraic` |
+| Tier 3 (Derived Metrics) | External benchmarks match | `cagr`, `bounded_range`, `structural_break` |
+
+The semantic table encodes Tier 2 and Tier 3 durably. Once built, they re-run
+every data refresh — no manual verification needed for checks that already pass.
+
+---
+
+## Step 0: Check the Semantic Table (all modes)
+
+Before running any mode, check if semantic checks exist for this domain:
+
+```sql
+SELECT check_category,
+  COUNT(*) AS checks,
+  SUM(CASE WHEN pass THEN 1 ELSE 0 END) AS passed,
+  SUM(CASE WHEN NOT pass THEN 1 ELSE 0 END) AS failed
+FROM gold.semantic_{domain}
+GROUP BY 1 ORDER BY 1
+```
+
+Three outcomes:
+
+1. **Table exists, no failures** — strong foundation. Proceed with the
+   requested mode. Include the scorecard in all output.
+
+2. **Table exists, failures present** — investigate failures first (Mode 3).
+   Failures in the semantic table take priority over ad-hoc checks.
+
+3. **Table doesn't exist** — flag as coverage gap. Suggest invoking
+   `/dashboard` to build semantic checks.
+
+Include the semantic scorecard in every verification output:
+
+```
+Semantic: gold.semantic_ma_enrollment
+  1,923 checks | 1,880 pass | 43 fail
+  Failing: 17 smoothness (M&A), 6 bounded (early-year), 5 monotonicity (wobble)
+```
+
+---
+
+## The Verification Hierarchy
+
+Always escalate. Don't stop at Tier 1 when Tier 2 is possible.
+
+| Tier | What it proves | Strength |
+|------|---------------|----------|
+| **Tier 1: Spot Checks** | Individual values correct | Evidence — necessary but not sufficient |
+| **Tier 2: Sum Checks** | Multiple independently extracted values ALL correct and correctly denominated | Proof — algebraic consistency is hard to fake |
+| **Tier 3: Derived Metrics** | Multiple values correct AND correctly mapped AND combined | Gold standard — proves entire pipeline |
+
+**Tier 2 is the most underrated.** If Revenue = Premiums + Products + Services
+across 10 years, four independently extracted items are all correct.
+
+**Tier 3 is the hardest to pass by accident.** If your computed MCR matches
+UNH's press release, both numerator and denominator are proven correct.
+
+**The semantic table encodes Tier 2 + 3 durably.** The `algebraic` category
+is Tier 2 running automatically. The `cagr` and `bounded_range` categories
+are Tier 3 with source URLs.
 
 ---
 
@@ -83,27 +208,15 @@ extraction pipeline correctly pulled data from source files.
 1. **Select 3 sample files** across eras (oldest, newest, mid-history).
 
 2. **For each file, run Tier 1 — Spot Checks:**
-   - Open the source document (PDF, XLSX, or the original CSV)
+   - Open the source document (PDF, XLSX, or CSV)
    - Pick 10 specific values spread across different columns and rows
    - Find the same values in the extracted output
-   - Show the comparison:
-
-   ```
-   File: cms_hospital_cost_report_2024.csv (newest)
-   Source: Original CSV from data.cms.gov
-
-   | Row | Field | Source Value | Extracted Value | Match |
-   |-----|-------|-------------|-----------------|-------|
-   | CCN 050454 | net_patient_revenue | $1,234,567,890 | 1234567890 | yes |
-   | CCN 050454 | number_of_beds | 382 | 382 | yes |
-
-   Result: 10/10 match
-   ```
+   - Show the comparison as a table with match/mismatch per value
 
 3. **If the data supports it, run Tier 2 — Sum Checks:**
    - Identify additive relationships in the source data
    - Verify they hold in the extracted data
-   - Sum checks that span multiple independently extracted values are stronger
+   - Sum checks spanning multiple independently extracted values are stronger
      than single-value spot checks (Principle #18)
 
 4. **If external data exists, run Tier 3 — Derived Metric Checks:**
@@ -144,20 +257,10 @@ correctly through bronze → silver → gold → platinum.
    | Platinum | platinum.insurer_kpi_dashboard | revenue='$371.6B' | yes |
    ```
 
-3. **In workspace contexts, use workspace schema, not prod schema:**
-   After `warehouse_materialize` in a workspace, models live at
+3. **In workspace contexts, use workspace schema:**
    `{layer}__{postgres_schema}.{model_name}` — NOT `{layer}.{model_name}`.
-   ```sql
-   -- WRONG (hits prod):
-   SELECT COUNT(*) FROM silver.stg_x
-   -- CORRECT (hits workspace):
-   SELECT COUNT(*) FROM silver__ws_release_branch_xxxxx.stg_x
-   ```
-   If the workspace table has 0 rows or doesn't exist: `sql_model_save` does NOT
-   auto-materialize. Call `warehouse_materialize` in dependency order:
-   silver → gold → platinum, each with `workspace="ws_release_branch_xxxxx"`.
-   `motherduck_database = NULL` does NOT mean no MotherDuck state — it means the
-   workspace shares the prod database but uses separate schemas.
+   `sql_model_save` does NOT auto-materialize. Call `warehouse_materialize`
+   in dependency order: silver → gold → platinum.
 
 4. **Check for fan-out or fan-in bugs:**
    - Does joining in gold multiply rows?
@@ -168,315 +271,117 @@ correctly through bronze → silver → gold → platinum.
    - Confirm ratios are computed AFTER aggregation, not averaged
    - Test with a known example
 
-5. **Check temporal alignment in gold:**
+6. **Check temporal alignment in gold:**
    - Are the right time periods joined?
 
 ---
 
-## Mode 3: Analytical Verify
+## Mode 3: Semantic Verify
 
-**When to use:** After the dashboard is complete. The "does this actually make sense?" pass.
+**When to use:** After /dashboard builds a platinum model and its companion
+semantic checks. Also when investigating data quality concerns, after a data
+refresh produces new failures, or when asked "is this data correct?"
 
-### Steps
-
-1. **Internal consistency checks:**
-   - Do parts sum to whole?
-   - Do percentages sum to ~100%?
-   - Do trends make directional sense?
-   - Are there impossible values?
-
-2. **External corroboration:**
-   - Find an external source that independently reports the same metric
-   - Use Perplexity/Exa to find press releases, annual reports, or analyst
-     estimates to compare against
-   - Compare your calculated value against the external reference
-
-3. **Earnings transcript verification (Tier 3 power move):**
-   - Search transcripts for specific numbers the company reported about the
-     data domain you're verifying. Use `search_context` with `source: "transcripts"`
-     and the metric + time period.
-   - Example: You computed Humana's MLR at 89.4% for Q4 2023. Search transcripts
-     for "MLR Q4 2023 benefit expense ratio" with `ticker: "HUM"`. If the CEO
-     said "190 basis point miss in the quarter" and your data shows the same
-     delta from prior year — the entire pipeline is proven end-to-end.
-   - Example: Your enrollment dashboard shows UNH at 7.1M MA members. Search
-     transcripts for "Medicare Advantage membership enrollment" with `ticker: "UNH"`.
-     If the CFO quoted the same number, your scraping + extraction + value mapping
-     + SQL model all produced a correct result.
-   - This is the strongest form of Tier 3: the company's own earnings call is
-     the ultimate external reference, and we have it indexed and searchable.
-
-4. **The "does anything look off?" scan:**
-   - Look at the output with domain expert eyes
-   - Flag anything suspicious with explanation
-
----
-
-## Mode 4: SQL Review
-
-**When to use:** After writing SQL models (/dashboard). Reviews craft quality of
-the SQL — not whether data is correct (Modes 1-3), but whether SQL is
-well-structured and follows conventions.
+This is the primary verification mode for analytical correctness. If semantic
+checks exist, start here. If they don't, flag the gap and invoke `/dashboard`.
 
 ### Steps
 
-1. **Read the SQL model.** For each CTE, evaluate:
-   - **Does it earn its place?** A CTE that just renames one column → fold it in.
-   - **Named correctly?** Prefix must match purpose: `src_`, `flt_`, `clc_`,
-     `agg_`, `wnd_`, `ded_`, `jnd_`, `pvt_`.
-   - **Over-split?** 3 CTEs for what should be 1 → merge them.
-   - **Under-split?** A wall of mixed operations → break up by concern.
+1. **Run the scorecard:**
 
-2. **Check conventions:**
-   - Every column has `column_description` in MODEL block (Principle #16)
-   - No joins in silver (Principle #4)
-   - Ratios after aggregation (Principle #12): `SUM(num) / NULLIF(SUM(denom), 0)`
-   - Dedup via `QUALIFY ROW_NUMBER()` not subqueries (Principle #15)
-   - No unnecessary transforms (TRIM on data that doesn't need it)
+   ```sql
+   SELECT check_category,
+     COUNT(*) AS checks,
+     SUM(CASE WHEN pass THEN 1 ELSE 0 END) AS passed,
+     SUM(CASE WHEN NOT pass THEN 1 ELSE 0 END) AS failed
+   FROM gold.semantic_{domain}
+   GROUP BY 1 ORDER BY 1
+   ```
 
-3. **Check for dead code:**
-   - CTEs defined but never referenced
-   - Columns computed but never selected
-   - WHERE clauses that filter nothing
+   If all pass, skip to step 4 (gap analysis).
 
-4. **Dashboard integration (platinum only):**
-   - `@dashboard` block present with chart config
-   - `@overview` block present
-   - Filter labels make sense to non-technical users
-   - `valueOptions` complete
+2. **Investigate failures:**
 
----
+   ```sql
+   SELECT check_category, check_name, period,
+     ROUND(value, 2) AS value,
+     ROUND(expected_low, 2) AS low,
+     ROUND(expected_high, 2) AS high, note
+   FROM gold.semantic_{domain}
+   WHERE NOT pass
+   ORDER BY check_category, check_name, period
+   ```
 
-## Mode 5: Data Quality Profile
+   For each failure, determine the cause using the investigation patterns.
 
-**When to use:** Before writing SQL models, after publishing to warehouse.
-The "eyes on the data" step. Absorbed from the former /profile skill.
+3. **Classify each failure:**
 
-### Run 4 checks in parallel:
+   | Classification | Meaning | Action |
+   |---------------|---------|--------|
+   | **Pipeline bug** | Data is actually wrong | Fix (invoke /ingest or /dashboard) |
+   | **Merger/acquisition** | Company structural change | Document with source URL |
+   | **Source data limitation** | Source agency methodology change | Document impact |
+   | **Known industry event** | Documented market shift | Document with source URL |
+   | **Threshold too tight** | Bounds need adjustment | Adjust with justification |
 
-**Check 1: Schema & Row Counts**
-```sql
-DESCRIBE {table};
-SELECT COUNT(*) FROM {table};
-SELECT {time_col}, COUNT(*) FROM {table} GROUP BY 1 ORDER BY 1;
-SELECT * FROM {table} LIMIT 5;
-```
-Report: column inventory, row count trend, sample data.
+   **Investigation patterns by category:**
 
-**Check 2: Value Distributions**
-```sql
--- Categorical: top values
-SELECT {col}, COUNT(*) FROM {table} GROUP BY 1 ORDER BY 2 DESC LIMIT 20;
--- Numeric: range and spread
-SELECT MIN({col}), MAX({col}), AVG({col}), STDDEV({col}), COUNT(DISTINCT {col}) FROM {table};
-```
-Report: unexpected entries, impossible values, cardinality check.
+   - **smoothness** — Query years around the swing. Check for company
+     appearing/disappearing. Search Exa for M&A. Most are mergers.
+   - **bounded_range** — Check if era-specific. Market structure changes
+     over decades — bounds for 2015-2025 may not hold for 2009-2012.
+   - **monotonicity** — Small wobble (0.2pp) is noise. Large drop (5pp+)
+     is a reclassification event. Check the source data.
+   - **algebraic** — NEVER classify away. Parts must equal whole. If they
+     don't, something is broken. Investigate immediately.
+   - **cagr/structural** — Compare against the source URL in the check.
+     Wrong benchmark → fix the check. Data disagrees → investigate pipeline.
 
-**Check 3: Length & Format Outliers**
-```sql
-SELECT LEN({col}) AS str_len, COUNT(*) FROM {table} GROUP BY 1 ORDER BY 1;
-```
-Report: unusual string lengths, mixed formats, encoding issues.
+4. **Gap analysis:**
 
-**Check 4: NULL Analysis**
-```sql
-SELECT COUNT(*) AS total,
-  ROUND(100.0 * SUM(CASE WHEN {col} IS NULL THEN 1 ELSE 0 END) / COUNT(*), 1) AS null_pct
-FROM {table};
-```
-Report: NULL rates, concentration patterns, recommended handling.
+   List every filter dimension and metric in the platinum model. For each,
+   check whether semantic checks cover it:
 
-### Output: Data Quality Report
-```
-DATA QUALITY: {table_name}
+   ```
+   Coverage: platinum.ma_enrollment_dashboard
+   ├── segment: MA (covered), PDP (covered)
+   ├── distribution: Individual (covered), Group (partial — 1 check)
+   ├── network_category: HMO, PPO, Other (all covered)
+   ├── parent_organization: top-5 specific + smoothness for >100K
+   ├── enrollment: algebraic + monotonicity + CAGR + smoothness
+   ├── market_share_pct: algebraic (sum to 100%)
+   ├── yoy_delta: algebraic (= enrollment - prior)
+   └── yoy_delta_pct: bounded_range + smoothness
+   ```
 
-Summary: 456,789 rows, 116 columns, 2011-2024
+   Flag dimensions with zero or weak coverage. Suggest additions.
 
-Critical:
-- net_revenue ranges -5M to 50B — possible denomination mixing
-  → CHECK source files for denomination markers
+5. **External corroboration (when investigating failures):**
 
-Warning:
-- state_code: 3 rows have "XX" → WHERE state_code != 'XX' in silver
-- rural_urban: 12% NULL, concentrated in 2011-2014 → COALESCE to 'Unknown'
+   Use Exa/Perplexity to find independent sources:
+   - Industry reports (KFF, MedPAC, Avalere, CBO)
+   - SEC filings (merger announcements, enrollment disclosures)
+   - Earnings transcripts (company-reported metrics — Tier 3 power move)
+   - Press releases (enrollment milestones, market share claims)
 
-Clean:
-- All dimension columns: 0% NULL, consistent formats
-- Numeric metrics: reasonable ranges
-```
-
----
-
-## Mode 6: Dashboard QA (Browser)
-
-**When to use:** After building or editing a dashboard. Opens the live frontend
-in a headless browser, systematically clicks every page control, and verifies
-that data loads, controls respond, and values make sense.
-
-**Adversarial mindset:** You are trying to BREAK the dashboard, not confirm it
-works. Click the weird combinations. Filter to a single company. Toggle rapidly.
-Look for empty states, NaN values, stale data, controls that do nothing.
-
-### Prerequisites
-
-Find the gstack browse binary:
-
-```bash
-B=~/.claude/skills/gstack/browse/dist/browse
-if [ -x "$B" ]; then
-  echo "BROWSE: ready"
-else
-  echo "BROWSE: not found — run: cd ~/.claude/skills/gstack && ./setup"
-  exit 1
-fi
-```
-
-If the dashboard requires auth, import cookies first:
-
-```bash
-$B cookie-import-browser
-```
-
-This pulls cookies from your real Chrome where you're already logged into
-soria-2.soriaanalytics.com. Only needed once per session.
-
-### Step 1: Navigate and Orient
-
-```bash
-$B goto https://soria-2.soriaanalytics.com/dashboards
-```
-
-Find the target dashboard by name. If the user named one, navigate directly.
-Otherwise, `$B snapshot -i` to enumerate the dashboard list and ask.
-
-Once on the dashboard page:
-
-```bash
-$B snapshot -i                          # all interactive elements with @e refs
-$B screenshot /tmp/dashboard-initial.png  # baseline screenshot
-```
-
-Read both outputs. Identify:
-- **Metric toggles** (Enrollment, Market Share %, YoY Growth %, YoY Change)
-- **Segment/filter controls** (LOB, Distribution, Network, Geo Level)
-- **The data table** — is it loaded? How many rows? Any "No data" message?
-- **JS errors** — `$B console` immediately after load
-
-### Step 2: Enumerate Controls
-
-From the snapshot, build a control map:
+### Output
 
 ```
-Controls found:
-  Metric:    [@e3 Enrollment] [@e4 Market Share %] [@e5 YoY Growth %] [@e6 YoY Change]
-  LOB:       [@e7 All] [@e8 MA] [@e9 PDP]
-  Geo Level: [@e10 All] [@e11 County] [@e12 MSA] [@e13 National] [@e14 State]
-  Other:     [@e15 Filter button] [@e16 Top N selector]
-```
-
-### Step 3: Click Every Control
-
-For each control group, click every option and verify the dashboard responds.
-Work through one group at a time, resetting to defaults between groups.
-
-```bash
-# Test LOB toggles
-$B click @e8                   # click "MA"
-$B snapshot -D                 # diff — what changed?
-$B screenshot /tmp/lob-ma.png
-
-$B click @e9                   # click "PDP"
-$B snapshot -D
-$B screenshot /tmp/lob-pdp.png
-
-$B click @e7                   # back to "All"
-```
-
-**For each click, check:**
-- Did the table update? (`$B snapshot -D` should show data changes)
-- Is the table empty? (0 rows = broken filter or no data for that slice)
-- Did any JS error fire? (`$B console`)
-- Did the active toggle visually change? (snapshot diff shows button state)
-
-**Adversarial combinations** — after individual controls work, test combos
-that are likely to break:
-- Smallest slice: single company + single segment + single geo level
-- "All" on everything: does it handle the full data volume?
-- Rapid toggles: click metric → immediately click segment → check for race conditions
-
-### Step 4: Inspect the Data
-
-Read values from the table and sanity-check them:
-
-```bash
-$B snapshot -s "table"         # scope snapshot to the data table
-```
-
-**Red flags to look for:**
-- Market share values > 100% or < 0%
-- YoY growth showing NaN, Infinity, or blank cells
-- Enrollment numbers that are suspiciously round (exactly 1,000,000)
-- "Other" row with nonsensical ratio values (847% market share)
-- Missing months or gaps in the time series
-- Values that don't change when you switch metrics (stale render)
-- Total row that doesn't match sum of visible rows
-
-### Step 5: Cross-Reference (optional but powerful)
-
-If sumo tools are loaded, query the warehouse for the same slice and compare
-against what the browser shows:
-
-```sql
--- What the warehouse says for MA, National, latest month
-SELECT parent_organization, enrollment, market_share_pct
-FROM platinum.ma_enrollment_dashboard
-WHERE segment = 'MA' AND reporting_month = '2026-03'
-ORDER BY enrollment DESC
-LIMIT 10
-```
-
-Compare the top 5 values against the browser. Mismatches mean either:
-- The dashboard is hitting a different table/branch
-- Server-side pivot is computing differently than the model
-- Caching is serving stale data
-
-### Step 6: Report
-
-```
-Dashboard QA: [Name]
-URL: https://soria-2.soriaanalytics.com/[path]
-
-Controls tested:
-  ✓ Metric toggles (4/4) — all update the table
-  ✓ LOB (3/3) — MA, PDP, All load data
-  ✗ Geo Level — "County" shows empty table (0 rows)
-  ✓ Top N — changes visible rows correctly
-
-Data checks:
-  ✓ Market share sums to ~100% for default view
-  ✗ "Other" row shows 347% market share — missing rollup: share annotation?
-  ✓ Enrollment values match warehouse within 0.1%
-  ✗ YoY Growth shows NaN for 3 orgs in Jan 2026 — missing prior year data
-
-JS errors: 0
-
-Verdict: FUNCTIONAL with 2 data issues.
-  - County geo level returns no data (may be intentional — check if data exists)
-  - "Other" row market share is wrong — needs rollup DSL fix
-```
-
-Screenshot evidence: attach the PNGs showing the issues.
-
-### Workflow Summary
-
-```
-$B cookie-import-browser                     # auth (once)
-$B goto <dashboard-url>                      # navigate
-$B snapshot -i && $B console                 # orient + check errors
-for each control: $B click → $B snapshot -D  # test controls
-$B snapshot -s "table"                       # read data values
-warehouse_query(compare SQL)                 # cross-reference
-report with screenshots                      # verdict
+Semantic Verification: ma_enrollment
+├── Scorecard: 1,923 checks, 97.8% pass rate
+├── Failures: 43
+│   ├── 17 M&A events (documented with source URLs)
+│   ├── 12 source data limitations (CMS methodology)
+│   ├── 6 early-year bounds (market structure different pre-2013)
+│   ├── 5 monotonicity wobble (noise)
+│   ├── 3 under investigation
+│   └── 0 pipeline bugs
+├── Coverage: 8/8 categories, all filter dimensions covered
+├── Concerns:
+│   1. Parent org mapping instability (BCBS Michigan)
+│   2. Dec→Jan enrollment drops (2009-2011)
+│   3. "Other" network category unstable (2015 reclassification)
+└── Confidence: HIGH
 ```
 
 ---
@@ -484,40 +389,22 @@ report with screenshots                      # verdict
 ## Phase-Gated Verification
 
 When a /plan artifact exists with verification criteria, run against those
-criteria specifically:
-
-```
-Plan says: After E phase, verify "50 states have filings, date range 2020-2025"
-
-Verification:
-├── State count: SELECT COUNT(DISTINCT state) = 51 (50 states + DC) → PASS
-├── Date range: MIN(date) = 2020-01, MAX(date) = 2025-12 → PASS
-└── File types: 100% PDF/XLSX → PASS
-
-Plan E-phase criteria: MET
-```
-
-This connects /verify to /plan's upfront verification plan. Each ETVLR phase
-has its own criteria. Run the relevant criteria after each phase completes.
+criteria specifically. Each ETVLR phase has its own criteria — run the
+relevant ones after each phase completes.
 
 ---
 
-## The Verification Hierarchy
+## When Things Fail: Check Logfire
 
-Always escalate. Don't stop at Tier 1 when Tier 2 is possible.
+Don't conclude "the data is wrong" until you've checked infrastructure.
 
-| Tier | What it proves | Strength |
-|------|---------------|----------|
-| **Tier 1: Spot Checks** | Individual values correct | Evidence — necessary but not sufficient |
-| **Tier 2: Sum Checks** | Multiple independently extracted values ALL correct and correctly denominated | Proof — algebraic consistency is hard to fake |
-| **Tier 3: Derived Metrics** | Multiple values correct AND correctly mapped AND correctly combined | Gold standard — proves entire pipeline |
-
-**Tier 2 is the most underrated.** If Revenue = Premiums + Products + Services
-across 10 years, four independently extracted items are all correct.
-
-**Tier 3 is the hardest to pass by accident.** If your computed MCR matches
-UNH's press release, both numerator and denominator are proven correct through
-the entire pipeline.
+| Symptom | Likely cause | Fix |
+|---------|-------------|-----|
+| Dashboard 504 | Query >45s | Pre-aggregate in gold |
+| Missing bronze data | Parquet 404 in GCS | Re-materialize bronze |
+| Silver model fails | Column name mismatch | Fix silver CAST |
+| Semantic model fails | CTE error or timeout | Check upstream materialization |
+| Spot check mismatch | Extraction error | Trace back to /ingest |
 
 ---
 
@@ -528,19 +415,23 @@ cat > ~/.soria-stack/artifacts/verify-$(date +%Y%m%d-%H%M%S).md << 'ARTIFACT'
 # Verification Scorecard: [Dataset/Model Name]
 
 ## Mode
-[Pipeline / Model / Analytical / SQL Review / Data Quality]
+[Pipeline / Model / Semantic]
+
+## Semantic Checks
+[Scorecard: total checks, pass rate, failure breakdown by classification]
+[Coverage: which dimensions/metrics covered, which are gaps]
 
 ## Tier Results
 [Which tiers run, specific evidence for each]
 
 ## Plan Criteria (if applicable)
-[Which phase criteria were checked, pass/fail]
+[Which phase criteria checked, pass/fail]
 
 ## Confidence
 [HIGH / MEDIUM / LOW with justification]
 
-## Caveats
-[What couldn't be verified and why]
+## Concerns
+[Ranked list of worries, with severity]
 
 ## Outcome
 Status: [DONE | DONE_WITH_CONCERNS | BLOCKED | NEEDS_CONTEXT]
@@ -550,37 +441,16 @@ ARTIFACT
 
 ---
 
-## When Things Fail: Check Logfire
-
-When dashboard queries fail, data is missing, or verification hits unexpected
-errors, **check Logfire before assuming the data is wrong.** The problem may be
-infrastructure, not data quality.
-
-### Common failure patterns
-
-| Symptom | What Logfire shows | Fix |
-|---------|-------------------|-----|
-| Dashboard returns 504 | Query took >45s, exceeded gateway timeout | Platinum model too large — add filters or pre-aggregate in gold |
-| Missing data in bronze | Parquet file 404 in GCS (`ducklake-*` not found) | Bronze needs re-materialization — `warehouse_materialize` |
-| Silver model fails | `SQL validation failed` or column name mismatch | Bronze has dirty column names — republish or fix silver CAST |
-| SQLMesh plan failure | Multiple `stg_*` models failing | Usually cascading from one broken bronze table — fix the root |
-| Spot check value mismatch | Check if extraction span shows errors | May be an extraction bug, not a model bug — trace back to /ingest |
-
-### The rule
-Don't conclude "the data is wrong" until you've checked whether the
-infrastructure is healthy. A missing parquet file isn't a data quality issue —
-it's a materialization issue. A 504 isn't bad data — it's a slow query.
-
----
-
 ## What "Done" Means
 
 Verification is DONE when you can produce a scorecard showing:
-1. Which modes and tiers were run
-2. Specific evidence for each (tables, not just "looks good")
-3. What couldn't be verified and why
-4. A confidence level with justification
-5. Any caveats or known issues
+1. The semantic check summary (or a note that checks don't exist yet)
+2. Which modes and tiers were run
+3. Specific evidence for each (tables, not just "looks good")
+4. Every semantic check failure investigated and classified
+5. A confidence level with justification
+6. Any concerns, ranked by severity
 
 **Never say "the data looks correct" without a scorecard.**
 **Never say "all checks pass" without showing the checks.**
+**Never leave semantic check failures uninvestigated.**
