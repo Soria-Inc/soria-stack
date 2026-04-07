@@ -1,14 +1,16 @@
 ---
 name: verify
-version: 3.0.0
+version: 4.0.0
 description: |
   Three-tier verification: spot checks (evidence), sum checks (proof),
   derived metric checks (gold standard). Also handles pipeline verification
   (extraction vs source), model verification (tracing values through layers),
-  data quality profiling, and SQL code review.
+  data quality profiling, SQL code review, and live dashboard QA via headless
+  browser (Mode 6).
   Never says "looks good" without showing evidence.
   Use when asked to "verify this", "is this data correct", "check the pipeline",
   "prove it", "validate the model", "profile the data", "review the SQL",
+  "test the dashboard", "check if the controls work", "QA this",
   or "what does this data look like".
   Proactively invoke this skill (do NOT claim data is correct without evidence)
   after any /ingest gate, after /dashboard, or when data quality is in question.
@@ -66,7 +68,7 @@ You are a paranoid data verifier. You NEVER say "looks good" or "data appears
 correct" without showing evidence. Your job is to build the case — with tables,
 comparisons, and math — that the data is either correct or wrong.
 
-Five modes. Three tiers. Always escalate through tiers — don't stop at Tier 1
+Six modes. Three tiers. Always escalate through tiers — don't stop at Tier 1
 if Tier 2 or 3 are possible.
 
 ---
@@ -301,6 +303,180 @@ Warning:
 Clean:
 - All dimension columns: 0% NULL, consistent formats
 - Numeric metrics: reasonable ranges
+```
+
+---
+
+## Mode 6: Dashboard QA (Browser)
+
+**When to use:** After building or editing a dashboard. Opens the live frontend
+in a headless browser, systematically clicks every page control, and verifies
+that data loads, controls respond, and values make sense.
+
+**Adversarial mindset:** You are trying to BREAK the dashboard, not confirm it
+works. Click the weird combinations. Filter to a single company. Toggle rapidly.
+Look for empty states, NaN values, stale data, controls that do nothing.
+
+### Prerequisites
+
+Find the gstack browse binary:
+
+```bash
+B=~/.claude/skills/gstack/browse/dist/browse
+if [ -x "$B" ]; then
+  echo "BROWSE: ready"
+else
+  echo "BROWSE: not found — run: cd ~/.claude/skills/gstack && ./setup"
+  exit 1
+fi
+```
+
+If the dashboard requires auth, import cookies first:
+
+```bash
+$B cookie-import-browser
+```
+
+This pulls cookies from your real Chrome where you're already logged into
+soria-2.soriaanalytics.com. Only needed once per session.
+
+### Step 1: Navigate and Orient
+
+```bash
+$B goto https://soria-2.soriaanalytics.com/dashboards
+```
+
+Find the target dashboard by name. If the user named one, navigate directly.
+Otherwise, `$B snapshot -i` to enumerate the dashboard list and ask.
+
+Once on the dashboard page:
+
+```bash
+$B snapshot -i                          # all interactive elements with @e refs
+$B screenshot /tmp/dashboard-initial.png  # baseline screenshot
+```
+
+Read both outputs. Identify:
+- **Metric toggles** (Enrollment, Market Share %, YoY Growth %, YoY Change)
+- **Segment/filter controls** (LOB, Distribution, Network, Geo Level)
+- **The data table** — is it loaded? How many rows? Any "No data" message?
+- **JS errors** — `$B console` immediately after load
+
+### Step 2: Enumerate Controls
+
+From the snapshot, build a control map:
+
+```
+Controls found:
+  Metric:    [@e3 Enrollment] [@e4 Market Share %] [@e5 YoY Growth %] [@e6 YoY Change]
+  LOB:       [@e7 All] [@e8 MA] [@e9 PDP]
+  Geo Level: [@e10 All] [@e11 County] [@e12 MSA] [@e13 National] [@e14 State]
+  Other:     [@e15 Filter button] [@e16 Top N selector]
+```
+
+### Step 3: Click Every Control
+
+For each control group, click every option and verify the dashboard responds.
+Work through one group at a time, resetting to defaults between groups.
+
+```bash
+# Test LOB toggles
+$B click @e8                   # click "MA"
+$B snapshot -D                 # diff — what changed?
+$B screenshot /tmp/lob-ma.png
+
+$B click @e9                   # click "PDP"
+$B snapshot -D
+$B screenshot /tmp/lob-pdp.png
+
+$B click @e7                   # back to "All"
+```
+
+**For each click, check:**
+- Did the table update? (`$B snapshot -D` should show data changes)
+- Is the table empty? (0 rows = broken filter or no data for that slice)
+- Did any JS error fire? (`$B console`)
+- Did the active toggle visually change? (snapshot diff shows button state)
+
+**Adversarial combinations** — after individual controls work, test combos
+that are likely to break:
+- Smallest slice: single company + single segment + single geo level
+- "All" on everything: does it handle the full data volume?
+- Rapid toggles: click metric → immediately click segment → check for race conditions
+
+### Step 4: Inspect the Data
+
+Read values from the table and sanity-check them:
+
+```bash
+$B snapshot -s "table"         # scope snapshot to the data table
+```
+
+**Red flags to look for:**
+- Market share values > 100% or < 0%
+- YoY growth showing NaN, Infinity, or blank cells
+- Enrollment numbers that are suspiciously round (exactly 1,000,000)
+- "Other" row with nonsensical ratio values (847% market share)
+- Missing months or gaps in the time series
+- Values that don't change when you switch metrics (stale render)
+- Total row that doesn't match sum of visible rows
+
+### Step 5: Cross-Reference (optional but powerful)
+
+If sumo tools are loaded, query the warehouse for the same slice and compare
+against what the browser shows:
+
+```sql
+-- What the warehouse says for MA, National, latest month
+SELECT parent_organization, enrollment, market_share_pct
+FROM platinum.ma_enrollment_dashboard
+WHERE segment = 'MA' AND reporting_month = '2026-03'
+ORDER BY enrollment DESC
+LIMIT 10
+```
+
+Compare the top 5 values against the browser. Mismatches mean either:
+- The dashboard is hitting a different table/branch
+- Server-side pivot is computing differently than the model
+- Caching is serving stale data
+
+### Step 6: Report
+
+```
+Dashboard QA: [Name]
+URL: https://soria-2.soriaanalytics.com/[path]
+
+Controls tested:
+  ✓ Metric toggles (4/4) — all update the table
+  ✓ LOB (3/3) — MA, PDP, All load data
+  ✗ Geo Level — "County" shows empty table (0 rows)
+  ✓ Top N — changes visible rows correctly
+
+Data checks:
+  ✓ Market share sums to ~100% for default view
+  ✗ "Other" row shows 347% market share — missing rollup: share annotation?
+  ✓ Enrollment values match warehouse within 0.1%
+  ✗ YoY Growth shows NaN for 3 orgs in Jan 2026 — missing prior year data
+
+JS errors: 0
+
+Verdict: FUNCTIONAL with 2 data issues.
+  - County geo level returns no data (may be intentional — check if data exists)
+  - "Other" row market share is wrong — needs rollup DSL fix
+```
+
+Screenshot evidence: attach the PNGs showing the issues.
+
+### Workflow Summary
+
+```
+$B cookie-import-browser                     # auth (once)
+$B goto <dashboard-url>                      # navigate
+$B snapshot -i && $B console                 # orient + check errors
+for each control: $B click → $B snapshot -D  # test controls
+$B snapshot -s "table"                       # read data values
+warehouse_query(compare SQL)                 # cross-reference
+report with screenshots                      # verdict
 ```
 
 ---
