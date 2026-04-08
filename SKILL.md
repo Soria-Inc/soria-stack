@@ -51,6 +51,7 @@ and what to verify.
 | Saying "let's work on X" or "come up with a plan" | `/plan` |
 | Ready to scrape, extract, or publish | `/ingest` |
 | Normalizing values across eras | `/map` |
+| Resolving company names to parent companies | `/parent-map` |
 | Profiling data, building SQL models, or reviewing SQL | `/dashboard` |
 | Checking if data is correct, proving it | `/verify` |
 | Testing the live dashboard in a browser | `/smoke` |
@@ -67,6 +68,8 @@ and what to verify.
 /tools (always first)
    ↓
 /status → /plan → /ingest → /map → /dashboard → /verify → /promote
+                          ↑
+                   /parent-map (entity resolution — parallel to /map)
                                         ↑              ↑
                               (survey + SQL review     (semantic checks
                                built into /dashboard)   foundation of /verify)

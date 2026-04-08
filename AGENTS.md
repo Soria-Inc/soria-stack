@@ -1,7 +1,7 @@
 # SoriaStack — Data Pipeline Skills
 
 SoriaStack is a collection of SKILL.md files that give AI agents structured roles for
-data pipeline work. Thirteen skills following the ETVLR framework:
+data pipeline work. Fourteen skills following the ETVLR framework:
 Extract → Transform → Value-map → Load → Represent.
 
 ## Available skills
@@ -15,6 +15,7 @@ Skills live in their own directories. Invoke them by name (e.g., `/status`).
 | `/plan` | ETVLR orchestrator — break work into phases, plan verification upfront. |
 | `/ingest` | Scrape, organize, extract, and publish with five hard-stop gates. |
 | `/map` | Value mapping — normalize raw values to canonical forms across eras. |
+| `/parent-map` | Resolve company names/codes to ultimate parent companies via parallel.ai. One centralized table, all data sources. |
 | `/dashboard` | Design bronze → silver → gold → platinum SQL models. Grain-first. Includes data survey, SQL review checklist, and semantic check building. |
 | `/verify` | Prove data is correct. Semantic checks foundation — 6 categories, standard schema, investigation workflow. Pipeline verify, model verify, semantic verify. |
 | `/smoke` | Adversarial browser QA — headless browser clicks every dashboard control, checks for breakage. |
