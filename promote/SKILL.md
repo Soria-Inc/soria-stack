@@ -1,17 +1,19 @@
 ---
 name: promote
-version: 1.0.0
+version: 2.0.0
 description: |
-  Promote workspace data and SQL models to production. This is the ONLY path
-  to production — do NOT promote ad-hoc, do NOT create prod views directly,
-  do NOT run workspace_manage(promote) outside this skill.
-  REQUIRES EXPLICIT HUMAN APPROVAL before every promotion.
+  Safe path to production. There is no `soria promote` command — promotion
+  flows through git + CI. This skill orchestrates the pre-flight checks,
+  reviews `soria env diff`, creates the PR via `gh`, waits for CI, and
+  runs canary checks via /smoke. Documents `soria revert` as the rollback
+  safety net.
+  REQUIRES EXPLICIT HUMAN APPROVAL before creating the PR.
   Use when asked to "promote", "push to prod", "deploy this", "make it live".
   Do NOT proactively suggest promotion — wait for the human to ask.
-  Do NOT promote just because a pipeline is "done" — done in workspace is not
-  done in prod. The human decides when to promote. (soria-stack)
+  Do NOT promote just because a pipeline is "done" — done in a dev env is
+  not done in prod. The human decides when to promote. (soria-stack)
+benefits-from: [verify, smoke]
 allowed-tools:
-  - sumo_*
   - Read
   - Bash
   - AskUserQuestion
@@ -23,112 +25,240 @@ allowed-tools:
 mkdir -p ~/.soria-stack/artifacts
 echo "SKILL: promote"
 echo "---"
-echo "⚠️  PRODUCTION PROMOTION — requires human approval at every step"
+echo "Active environment:"
+soria env status 2>&1 || echo "  (soria CLI not authed — run /env first)"
+echo "---"
+echo "Git state:"
+git status --short 2>&1 | head -20
+echo "---"
+echo "Commits ahead of origin/main:"
+git log --oneline origin/main..HEAD 2>&1 | head -10
+echo "---"
+echo "⚠️  PROMOTION — requires human approval before PR creation"
 ```
 
-Read `ETHOS.md` from this skill pack.
+**Before proceeding:** Read the `soria env status` output. The active env
+type must be `dev` or `preview`, NEVER `prod`. Promotion flows FROM dev TO
+prod via PR — you don't run this skill while pointing at prod. If the env
+is prod, STOP and tell the user to `/env checkout` a dev branch first.
+
+Read `ETHOS.md`. Key principles: #32 (diff-based promotion), #33 (production
+is git + CI, not a command), #34 (soria revert is the safety net),
+#35 (don't race the interactive agent).
 
 ## Skill routing (always active)
 
 If the user's intent shifts away from promotion, invoke the right skill:
 
-- User wants to fix something before promoting → invoke `/ingest`, `/map`, or `/dashboard`
+- User wants to fix something before promoting → invoke `/ingest`, `/map`, or `/dive`
 - User wants to verify before promoting → invoke `/verify`
+- User wants to test the dive in a browser → invoke `/smoke`
 - User wants to check what exists → invoke `/status`
 
 **CRITICAL: Do NOT promote anything without this skill.** If you're in another
-skill (/ingest, /dashboard, /verify) and the user says "push this to prod", invoke
-/promote — do NOT call workspace_manage(promote) directly.
+skill (`/ingest`, `/dive`, `/verify`) and the user says "push this to prod",
+invoke `/promote` — do NOT call `gh pr create` directly or push to main.
 
 ---
 
 # /promote — "Make it live"
 
-You are a production gatekeeper. Your job is to safely promote workspace data
-and SQL models to production. **You NEVER promote without explicit human
+You are a production gatekeeper. Your job is to safely promote dev-env work
+to production through git + CI. **You NEVER open a PR without explicit human
 approval.** You NEVER suggest promotion proactively.
 
-Production is permanent. Workspace is safe. The gap between them is this skill.
+Production is permanent-ish. Dev environments are safe. The gap between them
+is this skill.
+
+---
+
+## The Promotion Flow (Principle #33)
+
+There is no `soria promote` command. Promotion is:
+
+```
+1. Pre-flight checklist          (this skill)
+2. soria env diff                (review what's changing)
+3. git push                      (push the branch to origin)
+4. gh pr create                  (open the PR with summary)
+5. Human approval on the PR      (required)
+6. Merge                         (CI runs dbt run --target prod + frontend deploy)
+7. Canary via /smoke             (verify on live prod)
+8. (if broken) soria revert      (Principle #34 — the safety net)
+```
+
+This skill owns steps 1–5 and step 7. CI owns step 6. `soria revert` owns
+step 8 (but this skill documents it).
 
 ---
 
 ## Pre-flight Checklist
 
-Before promoting anything, verify ALL of these. Present the checklist to the
-human and wait for approval.
+Before opening a PR, verify ALL of these. Present the checklist to the human
+and wait for approval.
 
-### 1. What's being promoted?
+### 1. What environment are we promoting from?
 
-```
-workspace_manage(operation="read", workspace_id="...")
+```bash
+soria env list
+soria env status
 ```
 
 Report:
-- Workspace name and ID
-- Type: scraper workspace (has data) or SQL-only (models only)
-- What models exist (list bronze/silver/gold/platinum)
-- What data is published (table names, row counts)
+- Active env name (must not be `prod`)
+- Worktree path
+- Current branch (from `git branch --show-current` in the worktree)
+- Commits ahead of `origin/main`
 
-### 2. Has it been verified?
+### 2. What's changed — `soria env diff`
 
-Check for a /verify artifact for this workspace. If none exists:
-
+```bash
+soria env diff
 ```
-⚠️ NO VERIFICATION ARTIFACT FOUND
 
-This workspace has not been verified using /verify.
+This is the authoritative change summary. It shows:
+- **Code changes** — commits ahead of main, file diffs
+- **Data changes** — new scraper runs, published bronze tables, dbt model
+  additions/modifications
+- **Unpublished files** — any extracted files that haven't made it to bronze yet
+
+Present the full diff output. Point out anything surprising.
+
+### 3. Has it been verified?
+
+Check for a /verify artifact for this env:
+```bash
+ls -t ~/.soria-stack/artifacts/verify-*.md 2>/dev/null | head -3
+```
+
+If none exists:
+```
+⚠️  NO VERIFICATION ARTIFACT FOUND
+
+This env has not been verified using /verify.
 Recommend running /verify before promoting.
 
-Promote anyway? [requires explicit "yes"]
+Proceed anyway? [requires explicit "yes"]
 ```
 
-If a verify artifact exists, show the confidence level and any caveats.
+If a verify artifact exists, show the confidence level, semantic check
+pass rate, and any caveats.
 
-### 3. Dependency order check
+### 4. Has it been smoke-tested?
 
-Models must promote in order: **bronze → silver → gold → platinum.**
-
-If the workspace has silver models that reference bronze, confirm bronze
-exists in prod (or is being promoted in this batch):
-
-```
-Dependency check:
-- silver.stg_enrollment references bronze.enrollment → ✅ exists in prod
-- gold.enrollment_enriched references silver.stg_enrollment → ⚠️ silver only in workspace
-  → Must promote silver first, then gold
+```bash
+ls -t ~/.soria-stack/artifacts/smoke-*.md 2>/dev/null | head -3
 ```
 
-### 4. Known blockers
+For dive promotions, `/smoke` should have run against the dev env URL and
+confirmed:
+- Dual-mode load works (Phase 1 + Phase 2)
+- Every filter responds correctly
+- MethodologyModal and VerifyModal open with real content
+- Data matches the warehouse
+- Admin vs customer view split respects ENG-1559
 
-Check for these common issues before promoting:
-- **warehouse_materialize schema resolution:** If workspace silver references
-  workspace bronze (not prod bronze), materialization will use wrong data.
-  Fix: promote bronze first, verify it materialized, then promote silver.
-- **warehouse_query LIMIT on DDL:** Cannot create views through warehouse_query
-  (appends LIMIT to DDL). Use workspace_manage(promote) which handles this correctly.
-- **Stale workspace clone:** If the workspace was created days ago, the
-  MotherDuck clone may be outdated. Check freshness.
-
-### 5. Materialization state check
-
-Promotion can **lose materialization.** If a workspace model has
-`is_materialized=false` (the default) but the prod version was materialized as
-a TABLE, promoting overwrites the prod `SqlModelCode` record and creates a VIEW
-where there was a TABLE. This makes prod queries slow.
-
-**Before promoting, check prod materialization state:**
+If no smoke artifact:
 ```
-warehouse_query("SELECT table_name, table_type FROM information_schema.tables WHERE table_schema = 'bronze'")
+⚠️  NO SMOKE TEST ARTIFACT FOUND
+
+Recommend running /smoke before promoting a dive.
+
+Proceed anyway? [requires explicit "yes"]
 ```
 
-If any bronze models are `BASE TABLE` in prod, note them. After promotion,
-re-materialize to restore the TABLE:
-```
-warehouse_materialize(model_name="bronze.{table}", materialize=True)
+### 5. dbt tests pass
+
+For dives, run the full dbt test suite against the env:
+
+```bash
+cd frontend/src/dives/dbt
+dbt test --target dev
 ```
 
-Report materialization state in the pre-flight checklist so the human can
-decide whether to re-materialize after promotion.
+If any test fails, stop and ask the user whether to proceed (answer should
+almost always be no).
+
+### 6. Methodology + verify coverage present (Principles #28, #29)
+
+For each dive being promoted, confirm both:
+
+- **Methodology content is surfaced** — grep the dive component for how
+  methodology is wired. The pattern varies (inline, sibling file, DivePageHeader
+  prop). If the dive has no methodology content at all, it's a shipping blocker.
+- **Verify check rows exist** — query the shared verifications table:
+
+  ```bash
+  for marts_model in {list of changed marts models}; do
+    soria warehouse query "
+    SELECT '${marts_model}' AS model, COUNT(*) AS checks
+    FROM soria_duckdb_main.main.verifications
+    WHERE model = '${marts_model}'
+    "
+  done
+  ```
+
+  Fewer than ~15 rows per model is a shipping blocker.
+
+### 7. Interactive agent check (Principle #35)
+
+The Modal sandbox interactive agent verifies PRs, replies to comments, and
+posts investigations to Linear in real time. Before opening a competing PR,
+check for active agent runs using signals you can observe without Linear MCP:
+
+```bash
+# 1. PR comments on any open PR for this branch
+gh pr list --head $(git branch --show-current) --state open --json number,author,comments
+
+# 2. auto-fix branches matching this branch's ENG-ticket
+git branch -r | grep -E "auto-fix/"
+
+# 3. Open PRs from the agent's service account
+gh pr list --state open --json number,author,title,headRefName
+```
+
+Linear inspection is owned by `/ticket`. If the signals above are ambiguous
+and you need a deeper agent-run check, **invoke `/ticket`** to run the
+Linear query — `/ticket` knows how to recognize active agent runs and will
+either defer or return a clean go-ahead.
+
+If any of those return active work that overlaps with what you're about to
+promote, **defer to the agent** — report its state and stop. Don't open a
+competing PR. Don't comment on the same Linear ticket. Don't touch files
+the agent is actively editing.
+
+### 8. Git working tree is clean
+
+```bash
+git status --short
+```
+
+If there are ANY uncommitted or untracked files in the worktree, STOP and
+tell the user to commit or stash them before promoting. Promotion pushes
+commits — anything uncommitted will NOT go through the PR and will silently
+diverge from prod.
+
+Exceptions where untracked files are OK:
+- `dbt/target/` output (should be gitignored)
+- `frontend/public/dbt-docs/` (should be gitignored if auto-generated)
+- `.soria-env.json` (per-worktree config)
+
+If the user has legitimate work-in-progress they don't want to promote yet,
+they should stash it (`git stash push -u -m "WIP"`) and re-apply after.
+
+### 9. Diff-based promotion awareness (Principle #32)
+
+Promotion computes the diff against the env's `cloned_at` snapshot. An empty
+env promoted over prod is a no-op — it will NOT wipe prod. But:
+
+- **New rows** in the env are added to prod
+- **Modified rows** (updated_at > cloned_at) replace prod rows
+- **Deleted rows** (existed at clone time, missing now) are deleted from prod
+- **Untouched rows** are left alone
+
+If the user wants to delete rows from prod, they must explicitly delete them
+in the env first. Silent deletions via "I just didn't include those" don't
+work under diff-based promotion.
 
 ---
 
@@ -140,33 +270,44 @@ Present the pre-flight checklist results:
 PROMOTION REQUEST
 ═════════════════
 
-Workspace: [name] ([id])
-Type: [scraper / SQL-only]
+Environment: prickle-bottle → prod
+Branch: medicaid-states-dive
+Commits ahead: 7
+Changed dives: medicaid-states (new), ma-enrollment (modified)
 
-Models to promote:
-  - bronze.X (VIEW)
-  - silver.stg_X (VIEW)
-  - gold.X_enriched (VIEW)
+Code changes:
+  7 commits ahead of origin/main
+  - feat: medicaid states dive + dbt marts + manifest
+  - fix: rollup config for ma-enrollment "Other" row
+  - ...
 
-Data to promote:
-  - [table_name]: [row_count] rows
-  - (or "SQL-only — no data rows")
+Data changes:
+  Scrapers: 1 new run (medicaid, 47 files)
+  Warehouse: bronze.medicaid_enrollment (materialized, 456,789 rows)
+  dbt:    main_marts.medicaid_states — new model (18,340 rows)
+          main_marts.ma_enrollment — unchanged (rebuild)
+          verifications seed — +18 rows for medicaid_states model
 
-Materialization:
-  - bronze.X is currently [TABLE/VIEW] in prod
-  - [If TABLE: will need re-materialization after promotion]
-  - [If VIEW: no action needed]
+Verification: PASSED (verify-2026-04-10 — HIGH confidence, 96% checks within bounds)
+Smoke:        PASSED (smoke-2026-04-10 — dual-mode load OK, methodology + verify panels populated)
+dbt tests:    47/47 pass
+Methodology:  ✅ wired into DivePageHeader for both changed dives
+Verify rows:  ✅ 18 medicaid_states checks, 24 ma_enrollment checks
+Agent runs:   none active on this branch
+Diff mode:    Net new (no deletions)
 
-Verification: [PASSED / NOT VERIFIED / PASSED WITH CONCERNS]
-Dependencies: [ALL MET / ISSUES — list them]
-Blockers: [NONE / list them]
+⚠️  This will:
+  1. Open a PR via `gh pr create`
+  2. Human must merge the PR manually
+  3. CI runs `dbt run --target prod` + frontend deploy on merge
+  4. Canary via /smoke on the live prod URL
+  5. If broken, `soria revert` is the rollback
 
-⚠️  This will overwrite production models/data.
-    Proceed? [waiting for explicit approval]
+Proceed with opening the PR? [requires explicit approval: "yes", "open it", "go ahead"]
 ```
 
-**Do NOT proceed without "yes", "go ahead", "promote it", or equivalent.**
-Silence is NOT approval. Ambiguity is NOT approval.
+**Do NOT proceed without explicit approval.** Silence is NOT approval.
+Ambiguity is NOT approval.
 
 ---
 
@@ -174,72 +315,118 @@ Silence is NOT approval. Ambiguity is NOT approval.
 
 After human approval:
 
-### Step 1: Promote the workspace
+### Step 1: Push the branch
 
-```
-workspace_manage(operation="promote", workspace_id="...")
-```
-
-This copies SQL models from workspace to prod (workspace_id=NULL), dumps
-models to disk, and runs SQLMesh apply.
-
-### Step 2: Verify promotion landed
-
-After promotion completes, check that models exist in prod:
-
-```
-sql_model_list() — filter for the promoted model names, confirm workspace_id is NULL
+```bash
+cd {worktree_path}
+git push -u origin HEAD
 ```
 
-Check that views materialized in MotherDuck:
-```
-warehouse_query("SELECT table_name FROM information_schema.tables WHERE table_schema = 'silver'")
-```
+If the push fails (diverged, force needed), STOP. Never force-push to main
+or a shared branch. Escalate to the user.
 
-### Step 3: Spot-check prod data
+### Step 2: Create the PR
 
-Query a few values from the prod views to confirm they match what was in
-the workspace:
+```bash
+gh pr create --title "promote: {short description}" --body "$(cat <<'EOF'
+## Summary
 
-```
-warehouse_query("SELECT COUNT(*) FROM silver.stg_X")
-```
+{1-3 bullet points from soria env diff — what's changing}
 
-Compare against the workspace row count. If they don't match, flag it immediately.
+## Dives changed
 
-### Step 4: Report results
+- [new] medicaid-states — {one-line description, link to methodology file}
+- [modified] ma-enrollment — {one-line description of change}
 
-```
-PROMOTION COMPLETE
-══════════════════
+## Verification
 
-Workspace: [name] → PROMOTED
-Models promoted: [count] (bronze: X, silver: X, gold: X, platinum: X)
-Data promoted: [row counts or "SQL-only"]
-Prod verification:
-  - Models in prod: ✅
-  - Views materialized: ✅
-  - Row count match: ✅ / ⚠️ [explain difference]
+- /verify: HIGH confidence, {N}/{M} verify checks within bounds
+- /smoke: dual-mode load OK, methodology + verify panels surfaced
+- dbt test: {X}/{Y} pass
+- Verify check rows: {N} per changed marts model
 
-Status: DONE / DONE_WITH_CONCERNS
-```
+## Data changes
 
----
+{bullet list from soria env diff, data section}
 
 ## Rollback
 
-If promotion breaks something:
+Use `soria revert` if anything breaks. Do not hand-write DELETE statements
+or force-push.
 
-1. **SQL models:** The previous version still exists in Postgres (versions are
-   append-only). To rollback, you'd need to re-promote the previous workspace
-   or manually revert the sql_models records.
-2. **Data:** Workspace data doesn't overwrite prod data — it creates new tables.
-   Old prod tables are still there unless explicitly dropped.
-3. **Views:** SQLMesh manages view lifecycle. Re-applying from a previous state
-   reverts the views.
+---
+Filed from /promote skill. Active env: {env_name}.
+EOF
+)"
+```
 
-**Rollback is not automated.** If something goes wrong, escalate to the human
-with a clear description of what broke and what the options are.
+Capture the PR URL in the output.
+
+### Step 3: Report
+
+```
+PROMOTION PR OPENED
+═══════════════════
+
+Env: prickle-bottle → origin/main
+Branch: medicaid-states-dive
+PR: https://github.com/Soria-Inc/soria-2/pull/{N}
+
+Next steps (human):
+  1. Review the PR
+  2. Merge when ready
+  3. CI will run `dbt run --target prod` + frontend deploy
+  4. After CI green, invoke /smoke with --env=prod for canary
+
+If the canary fails: `soria revert` — do NOT manually undo.
+
+Status: DONE (PR opened, human owns merge)
+```
+
+### Step 4 (after merge): Canary via /smoke
+
+Once the user reports the PR is merged, invoke `/smoke` against the prod
+URL to confirm everything landed correctly. This is the final gate.
+
+If the canary fails, report the failure and suggest `soria revert` — do not
+attempt to fix inline.
+
+---
+
+## Rollback (Principle #34)
+
+If promotion breaks something, the safety net is:
+
+```bash
+soria revert <SOURCE_ENVIRONMENT>
+# example:
+soria revert medicaid-states
+```
+
+The argument is the **name of the environment/branch** whose promote you
+want to undo. From the CLI help:
+
+> Revert a previous promote by deleting its rows from the current branch.
+> Run this on a dev branch, then merge the PR to propagate the deletes to prod.
+
+So the revert flow is:
+1. Branch from main into a new worktree (`soria env branch revert-medicaid`)
+2. Run `soria revert medicaid-states` in that worktree — this deletes the
+   rows that the medicaid-states promote added
+3. Commit whatever changes the revert wrote
+4. `git push && gh pr create` — merge sends the deletes to prod
+
+Do **NOT**:
+- Hand-write `DELETE FROM prod.{table}` statements
+- Force-push to main to erase the merge commit
+- Manually drop tables
+
+The revert command is the authoritative reversal. It understands the
+diff-based promotion semantics and will only remove rows that were added
+or modified by the specific promote.
+
+`--yes` skips confirmation but you should only use it when you've already
+reviewed the changes with a dry-run or a manual `soria env diff`.
 
 ---
 
@@ -247,16 +434,28 @@ with a clear description of what broke and what the options are.
 
 ```bash
 cat > ~/.soria-stack/artifacts/promote-$(date +%Y%m%d-%H%M%S).md << 'ARTIFACT'
-# Promotion Report: [Workspace Name]
+# Promotion Report: [Branch Name]
 
-## What was promoted
-[Models, data, row counts]
+## Environment
+From: [dev env name]
+To: prod
+
+## Changed artifacts
+[Dives added/modified, dbt models, data tables]
 
 ## Pre-flight checklist
-[Verification status, dependency check, blockers]
+- Verification: [PASSED / NOT VERIFIED / PASSED WITH CONCERNS]
+- Smoke: [PASSED / NOT RUN]
+- dbt tests: [N/M pass]
+- Modals: [populated / missing for X]
+- Agent runs: [none / active on PR #Y]
+- Diff mode: [net new / includes deletions / mixed]
 
-## Results
-[What landed in prod, verification results]
+## PR
+URL: [https://github.com/.../pull/N]
+
+## Canary
+[After merge — /smoke results against prod URL]
 
 ## Outcome
 Status: [DONE | DONE_WITH_CONCERNS | BLOCKED]
@@ -271,15 +470,29 @@ ARTIFACT
 1. **Promoting without being asked.** The AI should NEVER suggest or initiate
    promotion. The human decides when to go to prod.
 
-2. **Calling workspace_manage(promote) outside this skill.** All promotion
-   goes through /promote. If you're in /ingest or /dashboard and the user says
-   "push to prod", invoke this skill — don't call the tool directly.
+2. **Calling `gh pr create` or `git push` outside this skill.** All promotion
+   goes through /promote. If you're in /ingest or /dive and the user says
+   "push to prod", invoke this skill — don't run git commands directly.
 
 3. **Promoting without verification.** If /verify hasn't run, warn loudly.
    Don't just promote because the pipeline "looks done."
 
-4. **Promoting in wrong dependency order.** Silver before bronze = silver
-   reads stale prod bronze data. Always bronze → silver → gold → platinum.
+4. **Promoting without a smoke test.** For dives, /smoke is the only way to
+   confirm the dual-mode load, modals, and filter behavior work in a real
+   browser. Don't skip it.
 
-5. **Assuming promotion = done.** Always verify after promotion — check models
-   exist in prod, views materialized, row counts match.
+5. **Force-pushing to roll back.** `soria revert` is the rollback. Never
+   force-push to main, never manually drop tables, never hand-write DELETE
+   statements.
+
+6. **Racing the interactive agent.** If the Modal sandbox interactive agent
+   has an active run on the current branch, defer to it. Don't open a
+   competing PR.
+
+7. **Assuming merged = done.** CI runs after merge. Only after CI green
+   AND /smoke canary pass against prod URL is the promotion truly done.
+
+8. **Silent deletions.** Diff-based promotion (#32) only deletes rows that
+   were explicitly deleted in the env. "Not including a row" does not
+   delete it from prod. If the user wants to remove rows from prod, they
+   must delete them in the env first.

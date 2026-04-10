@@ -1,27 +1,25 @@
 ---
 name: parent-map
-version: 1.0.0
+version: 2.0.0
 description: |
   Build and maintain the centralized parent company mapping table. Resolves
   company names and codes to their ultimate parent using parallel.ai enrichment,
   with ownership timelines, tickers, and network affiliations.
   One table, all data sources. Code-based joins, not name-based.
+  Drives the Soria platform through the `soria` CLI and `parallel.ai` API.
   Use when asked to "parent map", "who owns", "map these companies",
   "consolidate companies", "resolve parent", or when a new data source
-  needs parent company rollup for dashboards.
-  Use after /ingest (companies exist in warehouse), before /dashboard
+  needs parent company rollup for dives.
+  Use after /ingest (companies exist in warehouse), before /dive
   (gold models need parent join). Parallel to /map (value mapping).
   (soria-stack)
 benefits-from: [ingest, map, status]
 allowed-tools:
-  - sumo_*
-  - exa_*
-  - pplx_*
-  - mcp__perplexity__*
-  - mcp__exa__*
   - Read
   - Write
   - Bash
+  - WebFetch
+  - WebSearch
   - AskUserQuestion
 ---
 
@@ -29,22 +27,27 @@ allowed-tools:
 
 ```bash
 mkdir -p ~/.soria-stack/artifacts
-_BRANCH=$(git branch --show-current 2>/dev/null || echo "unknown")
-echo "BRANCH: $_BRANCH"
 echo "SKILL: parent-map"
+echo "---"
+echo "Active environment:"
+soria env status 2>&1 || echo "  (soria CLI not authed — run /env first)"
 echo "---"
 echo "Checking for prior artifacts..."
 ls -t ~/.soria-stack/artifacts/ingest-*.md ~/.soria-stack/artifacts/parent-map-*.md 2>/dev/null | head -5
 ```
 
-Read `ETHOS.md` from this skill pack. Key principles: #9 (historical names
-stay historical), #10 (validate with eyes).
+**Before proceeding:** Read the `soria env status` output. If the active
+environment type is `prod`, refuse to write parent mappings unless the
+user explicitly acknowledges. For dev/preview envs, proceed normally.
+
+Read `ETHOS.md`. Key principles: #9 (historical names stay historical),
+#10 (validate with eyes).
 
 ## Skill routing (always active)
 
 - Need to scrape/extract source data first → invoke `/ingest`
 - Need to normalize values (not parent companies) → invoke `/map`
-- Parent mapping done, ready to build SQL → invoke `/dashboard`
+- Parent mapping done, ready to build a dive → invoke `/dive`
 - Parent mapping done, ready to verify → invoke `/verify`
 
 ---
@@ -52,9 +55,18 @@ stay historical), #10 (validate with eyes).
 # /parent-map — "Who owns this company?"
 
 You are building the single source of truth for parent company assignments
-across all data sources. Every dashboard that shows company-level data joins
+across all data sources. Every dive that shows company-level data joins
 to this table. Get it wrong and market share, concentration metrics, and
 company trend lines are all broken.
+
+**Where this state lives:**
+- The `ref_company_parent_mapping` rows live in the `parent_mapping` scraper's
+  bronze table — promoted via `soria warehouse publish` + diff-based promotion
+- Gold model changes that wire the join live as SQL files in the dive's dbt
+  project (`frontend/src/dives/dbt/models/intermediate/` or similar)
+
+Commit any gold-model SQL edits in git before `/promote`. The parent mapping
+rows themselves promote via diff, no manual commit needed.
 
 ---
 
@@ -70,7 +82,7 @@ input_name          -- Company name as it appears in source data
 code                -- Numeric/string join key (group code, cocode, contract ID, CCN)
 code_type           -- What the code is: naic_group, naic_cocode, ma_contract, cms_ccn, etc.
 current_parent_name -- Raw parent from parallel.ai
-canonical_parent    -- Cleaned display name for dashboards (value-mapped)
+canonical_parent    -- Cleaned display name for dives (value-mapped)
 ticker              -- Stock ticker if public, NULL if private
 affiliation         -- Network: BCBS, Delta Dental, Kaiser Permanente, or NULL
 sources             -- Citation URLs from parallel.ai
@@ -86,10 +98,10 @@ created_at          -- When mapping was created
 - **`canonical_parent`** is the value-mapped clean name. One name per economic
   entity across all datasets and all time periods.
 - **Independent companies** have `canonical_parent` = their own cleaned name.
-- **Multiple `input_name` rows** can point to same `canonical_parent` (name variants,
-  rebrands, subsidiaries).
-- **Multiple `code_type` rows** for same company — NAIC group + MA contract + CCN
-  all resolve to the same parent.
+- **Multiple `input_name` rows** can point to same `canonical_parent` (name
+  variants, rebrands, subsidiaries).
+- **Multiple `code_type` rows** for same company — NAIC group + MA contract +
+  CCN all resolve to the same parent.
 
 ### Join pattern (any data source)
 
@@ -122,8 +134,8 @@ Before running parallel.ai, figure out what's unmapped.
 
 ### The universal pattern
 
-```sql
--- Step 1: Get all distinct entities from the new data source
+```bash
+soria warehouse query "
 WITH src_entities AS (
   SELECT DISTINCT
     {code_column} AS code,
@@ -132,7 +144,6 @@ WITH src_entities AS (
   FROM {source_table}
   WHERE {code_column} IS NOT NULL
 )
--- Step 2: Check what's already mapped
 SELECT
   COUNT(*) AS total,
   COUNT(CASE WHEN m.code IS NOT NULL THEN 1 END) AS matched,
@@ -140,6 +151,7 @@ SELECT
 FROM src_entities e
 LEFT JOIN silver.stg_parent_mapping m
   ON e.code = m.code AND e.code_type = m.code_type
+"
 ```
 
 ### Source-specific patterns
@@ -336,15 +348,28 @@ parent list before uploading.
 ## Gate 4: Upload and Verify
 
 1. Save as CSV with full schema
-2. Upload to `parent_mapping` scraper via presigned URL flow
-3. Create/update group + schema + mappings
-4. Publish to warehouse with `force=True`
-5. Update bronze model to new DuckLake snapshot
-6. Materialize bronze → silver in target workspace
+2. Upload via the standard scraper flow:
+   ```bash
+   soria scraper upload-urls parent_mapping
+   # upload the CSV to the returned presigned URL
+   soria scraper confirm parent_mapping
+   ```
+3. Schema + mappings (if CSV):
+   ```bash
+   soria schema mappings-read {group_id}
+   soria schema mappings-update {group_id}
+   ```
+4. Publish to warehouse with force:
+   ```bash
+   soria warehouse publish {group_id} --force
+   ```
+5. Update bronze model and re-run dbt for any downstream silver/gold that
+   reads from `stg_parent_mapping`.
 
 ### Verify 100% join
 
-```sql
+```bash
+soria warehouse query "
 WITH src_entities AS (
   SELECT DISTINCT
     {code_column} AS code,
@@ -358,6 +383,7 @@ SELECT
 FROM src_entities e
 LEFT JOIN silver.stg_parent_mapping m
   ON e.code = m.code AND e.code_type = m.code_type
+"
 ```
 
 **Must be 100% before proceeding.** If not, go back to Gate 2 for the
@@ -369,7 +395,8 @@ remaining unmapped entities.
 
 ## Gate 5: Wire Into Gold Model
 
-Replace name-based parent derivation with code-based join.
+Replace name-based parent derivation with code-based join in the downstream
+gold model that feeds dives.
 
 ### Standard pattern
 
@@ -444,7 +471,7 @@ jnd_add_parent AS (
 ### When a company rebrands
 1. Code stays the same (NAIC group_code doesn't change for rebrands)
 2. Add new name as `input_name` row pointing to updated `canonical_parent`
-3. Update `canonical_parent` to current name for dashboard clarity
+3. Update `canonical_parent` to current name for dive clarity
    (Anthem → Elevance Health)
 
 ---
@@ -466,14 +493,9 @@ jnd_add_parent AS (
    via different `code_type` values.
 
 5. **Skipping the 100% match verification.** If even 1% is unmatched, those
-   companies show up with wrong/missing parents on dashboards. Fix before shipping.
+   companies show up with wrong/missing parents on dives. Fix before shipping.
 
-6. **Using `company_mapping_timeline` for NAIC data.** That table is from SEC
-   Exhibit 21 filings — different naming conventions, different entity scope.
-   NAIC's own `group_name` is authoritative for NAIC data. Use
-   `ref_company_parent_mapping` instead.
-
-7. **Forgetting historical name variants.** If NAIC used "AETNA GRP" in 2016
+6. **Forgetting historical name variants.** If NAIC used "AETNA GRP" in 2016
    but "CVS HEALTH GRP" in 2019, both names need rows pointing to "CVS Health".
    Missing variants cause companies to split into multiple entities in time series.
 
@@ -484,6 +506,9 @@ jnd_add_parent AS (
 ```bash
 cat > ~/.soria-stack/artifacts/parent-map-$(date +%Y%m%d-%H%M%S).md << 'ARTIFACT'
 # Parent Mapping: [Data Source]
+
+## Environment
+[Active soria env]
 
 ## Scope
 [Code type, source table, total entities]

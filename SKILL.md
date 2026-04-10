@@ -1,25 +1,27 @@
 ---
 name: soria-stack
-version: 4.0.0
+version: 5.0.0
 description: |
-  Data pipeline skills for Soria Analytics. IMPORTANT: Run /tools FIRST in every
-  session before using any other soria-stack skill or calling any Soria MCP tool.
-  The Soria MCP tools (sumo_*, news_*, mcp__sumo__*) are deferred at startup and
-  will fail unless /tools has loaded them via ToolSearch.
-  Fourteen skills: /tools (load MCP tools), /status (what exists today),
-  /plan (ETVLR orchestrator), /ingest (scrape+extract+publish), /map (value mapping),
-  /dashboard (grain-first SQL + data survey + SQL review + semantic checks),
-  /verify (prove it — semantic checks foundation + pipeline/model/semantic verify),
-  /smoke (adversarial browser QA), /diagnose (diagnose failures),
-  /ticket (file structured tickets mid-session),
-  /promote (push to prod), /preview (render dashboards in chat),
-  /newsroom (news ops), /lessons (learn from what happened).
-  Suggest the right skill by stage: starting a session → /tools; investigating what
-  exists → /status; planning work → /plan; building a pipeline → /ingest;
-  normalizing values → /map; profiling data or designing SQL models or reviewing SQL
-  → /dashboard; proving data correct → /verify; testing live dashboard UI → /smoke;
-  something broke → /diagnose; filing a ticket → /ticket; news pipeline → /newsroom;
-  reviewing recent work → /lessons.
+  Data pipeline skills for Soria Analytics. Cognitive modes for upstream
+  pipeline work (scrape → extract → value-map → publish) and for building
+  dives (dbt marts + manifest + React component + DivesPage registration +
+  rows in the shared verifications seed + methodology wired into the component).
+  All skills drive the Soria platform through the `soria` CLI — no MCP.
+  Sixteen skills: /env (environment management), /tools (verify CLI + env),
+  /status (what exists), /plan (ETVLR orchestrator), /ingest (scrape + extract
+  + publish), /map (value mapping), /parent-map (centralized parent company
+  resolution), /dive (build a dive end-to-end), /preview (render a dive in
+  chat), /verify (prove data correct), /smoke (adversarial browser QA),
+  /diagnose (failure triage), /ticket (file structured tickets mid-session),
+  /promote (git push → PR → CI), /newsroom (news pipeline ops),
+  /lessons (retrospective).
+  Suggest the right skill by stage: starting a session → /env then /tools;
+  investigating what exists → /status; planning work → /plan; building a
+  pipeline → /ingest; normalizing values → /map; resolving parent companies
+  → /parent-map; building a dive or reviewing its SQL → /dive; proving data
+  correct → /verify; testing live dive UI → /smoke; something broke →
+  /diagnose; filing a bug/feature ticket → /ticket; promoting to prod →
+  /promote; news pipeline → /newsroom; reviewing recent work → /lessons.
 allowed-tools:
   - Read
   - Bash
@@ -29,60 +31,75 @@ allowed-tools:
 
 ```bash
 mkdir -p ~/.soria-stack/artifacts
-echo "SoriaStack v3 loaded"
+echo "SoriaStack v5 loaded"
+echo "---"
+if command -v soria >/dev/null 2>&1; then
+  echo "Active environment:"
+  soria env status 2>&1 || echo "  (not authed — run /env)"
+else
+  echo "⚠️  soria CLI not found — run: uv tool install --from <repo>/cli soria-cli"
+fi
 echo "---"
 echo "Recent artifacts:"
 ls -t ~/.soria-stack/artifacts/*.md 2>/dev/null | head -5 || echo "  (none)"
 ```
 
+**Prod safety:** if `soria env status` reports the active env type is `prod`,
+no write-path skill (`/ingest`, `/map`, `/parent-map`, `/dive`, `/newsroom`)
+may run without explicit user acknowledgment. `/promote` is the only skill
+that expects prod in its flow (and it promotes TO prod from a dev branch,
+not FROM prod).
+
 Read `ETHOS.md` before any data pipeline work. All principles apply.
 
 # SoriaStack — Data Pipeline Skills
 
-Ten cognitive modes for data pipeline work. Each sets how to think, when to stop,
-and what to verify.
+Sixteen cognitive modes for data pipeline work. Each sets how to think, when
+to stop, and what to verify. All skills shell out to the `soria` CLI — never
+MCP tools.
 
 ## Skill routing
 
 | If the user is... | Suggest |
 |-------------------|---------|
-| Starting a new session | `/tools` (always first) |
+| Starting a new session | `/env` then `/tools` |
+| Managing dev environments (branch / checkout / diff) | `/env` |
 | Asking "what do we have for X?" | `/status` |
 | Saying "let's work on X" or "come up with a plan" | `/plan` |
 | Ready to scrape, extract, or publish | `/ingest` |
 | Normalizing values across eras | `/map` |
 | Resolving company names to parent companies | `/parent-map` |
-| Profiling data, building SQL models, or reviewing SQL | `/dashboard` |
+| Building a dive, writing dbt SQL, or reviewing a dive | `/dive` |
 | Checking if data is correct, proving it | `/verify` |
-| Testing the live dashboard in a browser | `/smoke` |
-| Wanting to see dashboard data in chat | `/preview` |
+| Testing a live dive in a browser | `/smoke` |
+| Wanting to see a dive rendered in chat | `/preview` |
 | Something broke or isn't working | `/diagnose` |
 | Hit a bug, need to file a ticket | `/ticket` |
-| Promoting to production | `/promote` (requires human approval) |
+| Promoting to production (`git push` + PR) | `/promote` |
 | Working with the news pipeline | `/newsroom` |
 | Reviewing recent work for lessons | `/lessons` |
 
 ## The sequence
 
 ```
-/tools (always first)
+/env (set environment — always first)
    ↓
-/status → /plan → /ingest → /map → /dashboard → /verify → /promote
-                          ↑
-                   /parent-map (entity resolution — parallel to /map)
-                                        ↑              ↑
-                              (survey + SQL review     (semantic checks
-                               built into /dashboard)   foundation of /verify)
-   + /smoke (browser QA — after deploy)
-   + /diagnose (when something breaks — can enter from any phase)
-   + /ticket (file a ticket mid-session — can enter from any phase)
-   + /promote (ONLY when human says "push to prod")
-   + /preview (render dashboard data in chat)
+/tools (verify CLI + active env)
+   ↓
+/status → /plan → /ingest → /map → /dive → /verify → /promote
+                          ↑              ↑
+                   /parent-map      (verify rows live in
+                   (parallel to /map) the shared seed,
+                                     authored inside /dive)
+   + /smoke (browser QA — after dive deploys)
+   + /preview (render dive output in chat — any time)
+   + /diagnose (enters from any phase when something breaks)
+   + /ticket (side-quest — file a bug/feature ticket from any phase)
    + /newsroom (separate domain)
    + /lessons (periodic)
 ```
 
-Each skill produces an artifact that the next skill consumes.
+Each skill produces an artifact the next skill consumes.
 Don't skip steps — every pipeline that went poorly started with the AI building
 before looking.
 
@@ -91,31 +108,37 @@ before looking.
 Every data concept follows this lifecycle:
 
 ```
-E (Extract)   → /ingest Gate 1: scrape files
-T (Transform) → /ingest Gates 2-4: group, schema, extract
-V (Value Map) → /map: normalize values to canonicals
-L (Load)      → /ingest Gate 5: publish to warehouse
-R (Represent) → /dashboard: bronze → silver → gold → platinum SQL
+E (Extract)    → /ingest Gate 1: scrape files         (soria scraper run)
+T (Transform)  → /ingest Gates 2-4: group, schema,    (soria detect/extract/
+                 extract, validate                     validate/schema map)
+V (Value Map)  → /map: normalize values to canonicals (soria value index/map)
+L (Load)       → /ingest Gate 5: publish to warehouse (soria warehouse publish)
+R (Represent)  → /dive: dbt marts model + manifest +  (dbt + filesystem +
+                 TSX component + DivesPage entry +     soria warehouse query)
+                 verify seed rows + methodology
 ```
 
-/plan orchestrates these phases. /verify runs after each.
+`/plan` orchestrates the phases. `/verify` runs after each.
 
-## Workspace resolution
+## Environment resolution
 
-Write-path skills (`/ingest`, `/map`, `/dashboard`, `/promote`) require a workspace.
-Before any write operation, resolve which workspace you're working in:
+All write-path skills (`/ingest`, `/map`, `/parent-map`, `/dive`, `/promote`)
+require an active environment. Before any write op, confirm:
 
 1. **User named one** — use it.
-2. **Obvious from context** (just created, only one active, continuing prior work) — use it.
-3. **Multiple active workspaces exist** — list them and ask:
-   ```
-   workspace_manage(operation="list")
-   ```
-   Then: "I see these active workspaces: [list]. Which one should I work in?"
-4. **None exist** — offer to create one (`/ingest`, `/map`, `/dashboard`), or error (`/promote` — nothing to promote).
+2. **Obvious from context** (just created, continuing prior work) — use it.
+3. **None set** — suggest `/env` to list and switch.
+4. **Pointing at prod** — refuse writes unless the skill is `/promote` or the
+   user explicitly acknowledges prod.
 
-Read-only skills (`/status`, `/verify`, `/plan`, `/newsroom`, `/lessons`) don't need
-a workspace — they query across all schemas.
+Environments are Neon branches plus MotherDuck clones plus git worktrees.
+`soria env branch` creates one, `soria env checkout` prints the worktree path
+for the shell wrapper to cd into, `soria env diff` shows what's changed vs
+prod, `soria env teardown` soft-deletes (7-day grace).
+
+Read-only skills (`/status`, `/verify`, `/plan`, `/newsroom`, `/lessons`,
+`/preview`, `/ticket`) don't need an environment for writes but should still
+report the active env in output so the user knows which data they're looking at.
 
 ## Quick reference
 
@@ -123,3 +146,4 @@ a workspace — they query across all schemas.
 - **Artifacts** in `~/.soria-stack/artifacts/` — state passed between skills
 - **Gates** in every skill — hard stops where the human must review
 - **Completion status** — every skill ends with DONE / DONE_WITH_CONCERNS / BLOCKED / NEEDS_CONTEXT
+- **`soria --help`** — CLI surface reference (install: `uv tool install --from <repo>/cli soria-cli`)

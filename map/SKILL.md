@@ -1,17 +1,17 @@
 ---
 name: map
-version: 1.0.0
+version: 2.0.0
 description: |
   Value mapping — normalize raw values to canonical forms across eras and sources.
   Semantic reasoning about whether two values represent the same concept.
+  Drives the Soria platform through the `soria value` CLI — never MCP.
   Use when asked to "value map", "normalize values", "canonical", "map these values",
-  or when /ingest is done and values need normalization before /dashboard.
+  or when /ingest is done and values need normalization before /dive.
   Proactively invoke this skill (do NOT map values ad-hoc) when /status shows
   unmapped values or /ingest flags value drift across eras.
-  Use after /ingest, before /dashboard. (soria-stack)
+  Use after /ingest, before /dive. (soria-stack)
 benefits-from: [ingest]
 allowed-tools:
-  - sumo_*
   - Read
   - Bash
   - AskUserQuestion
@@ -23,23 +23,23 @@ allowed-tools:
 mkdir -p ~/.soria-stack/artifacts
 echo "SKILL: map"
 echo "---"
+echo "Active environment:"
+soria env status 2>&1 || echo "  (soria CLI not authed — run /env first)"
+echo "---"
 echo "Checking for ingest artifacts..."
 ls -t ~/.soria-stack/artifacts/ingest-*.md 2>/dev/null | head -3
 ```
 
-Read `ETHOS.md` from this skill pack. Key principles: #9 (historical names vs
-typos), #6 (don't mutate outputs).
+**Before proceeding:** Read the `soria env status` output. If the active
+environment type is `prod`, refuse to write any value mappings unless the
+user explicitly acknowledges. For dev/preview envs, proceed normally.
+
+Read `ETHOS.md`. Key principles: #9 (historical names vs typos), #6 (don't
+mutate outputs).
 
 **Check for prior ingest work:** If an ingest artifact exists, read it — it has
 the group IDs, table names, and schema. If /plan exists, check if it specified
 V-phase verification criteria.
-
-**Verify workspace identity before any write op.** Context handoffs often carry
-stale or wrong workspace IDs. Before calling `value_manage`, confirm:
-```
-workspace_manage(operation="list")
-```
-Find the workspace by name/scraper. Never assume the workspace ID from context.
 
 ## Skill routing (always active)
 
@@ -48,11 +48,10 @@ do NOT continue ad-hoc:
 
 - User wants to check pipeline status → invoke `/status`
 - User wants to go back to extraction → invoke `/ingest`
-- User says "now build the model/dashboard" → invoke `/dashboard`
+- User says "now build the dive" → invoke `/dive`
 - User wants to verify the mapped values → invoke `/verify`
-- User wants to profile data quality → invoke `/verify` (Mode 5)
 
-**After /map completes, suggest `/dashboard`** to build SQL on the clean data.
+**After /map completes, suggest `/dive`** to build a dive on the clean data.
 
 ---
 
@@ -61,6 +60,12 @@ do NOT continue ad-hoc:
 You are a value mapping specialist. Your job is to normalize raw extracted values
 to canonical forms — deciding whether two different strings represent the same
 concept, a historical name change, a typo, or genuinely different things.
+
+**Where this state lives:** value mappings are stored in the env's Neon
+Postgres, not in git. You author them via `soria value index` / `soria value
+map` and they promote to prod via `soria env diff` + PR merge (diff-based
+promotion — #32). You don't need to commit anything in this skill unless
+you're also editing a downstream SQL model that reads the mapped values.
 
 **This is semantic reasoning, not string matching.** "Drug Expense" vs "Drugs
 Expense" is a typo. "Gateway Health" vs "Highmark" is a corporate transition.
@@ -74,16 +79,8 @@ change that requires human judgment.
 Before mapping anything, understand the scope.
 
 For each group, check value mapping status:
-```
-value_manage(operation="read", group_id="...")
-```
-
-**Schema mappings are workspace-scoped.** If `database_query` on `schema_mappings`
-returns zero rows, you're hitting the public schema. Always pass `workspace_id`
-when looking up entities created in that workspace:
-```
-database_query("SELECT id FROM schema_mappings WHERE name = 'metric_name'",
-               workspace_id="...")
+```bash
+soria value read --group {group_id}
 ```
 
 Present a status table:
@@ -107,8 +104,8 @@ Focus on categorical columns with string values that vary across eras.
 ## Step 2: Index Values
 
 For columns that need mapping, index the distinct values:
-```
-value_manage(operation="index", group_id="...", column="metric_name")
+```bash
+soria value index --group {group_id} --column metric_name
 ```
 
 This extracts all unique values from the extracted files and stores them
@@ -122,21 +119,21 @@ For each unmapped value, classify it:
 
 ### Transcript-grounded canonical names
 
-When choosing canonical names for ambiguous metrics, search earnings transcripts
-for how the industry actually refers to this concept. Use `search_context` with
-`source: "transcripts"` and the metric domain keywords.
+When choosing canonical names for ambiguous metrics, search mempalace/earnings
+transcripts for how the industry actually refers to this concept. Use
+`mcp__openclaw__mempalace_search` with `wing=earnings` for ticker-specific
+phrasing, or `wing=granola` for internal meeting context.
 
-- Data has `benefit_expense_ratio` and `medical_loss_ratio` → search transcripts
-  for "benefit expense ratio medical loss ratio" — you'll find that different
-  companies use different terms for the same concept. Pick the one analysts
-  use most commonly as the canonical.
+- Data has `benefit_expense_ratio` and `medical_loss_ratio` → search for
+  "benefit expense ratio medical loss ratio" — different companies use
+  different terms for the same concept. Pick the one analysts use most
+  commonly as the canonical.
 - Data has `adjusted_discharges` vs `adjusted_discharges_per_calendar_day` →
-  search transcripts for "adjusted discharges per calendar day" to understand
-  if the industry treats these as the same metric or different ones.
+  search for "adjusted discharges per calendar day" to understand if the
+  industry treats these as the same metric or different ones.
 
 This is especially valuable for cross-source mapping where Kaufman Hall uses
-one name and Strata uses another — the transcript tells you what the shared
-canonical should be.
+one name and Strata uses another — transcripts tell you the shared canonical.
 
 ### Category 1: Typo / OCR Error → Auto-fix
 - `Operating EBIDA Margin` → `Operating EBITDA Margin` (missing T)
@@ -188,10 +185,10 @@ map unmapped-to-unmapped and let the system handle it.
 
 Work column by column. For each column:
 
-1. **Do the easy wins first** — typos, casing, encoding. These can be batched.
-   ```
-   value_manage(operation="map", group_id="...", column="metric_name",
-                value_id="...", canonical_id="...")
+1. **Do the easy wins first** — typos, casing, encoding. These can be batched:
+   ```bash
+   soria value map --group {group_id} --column metric_name \
+     --from "{raw_value}" --to "{canonical_value}"
    ```
 
 2. **Present methodology changes** — show the human what you'd map and why.
@@ -233,10 +230,10 @@ reports `ED Volume (Index)`. Same concept, different names and units.
 2. Document the unit conversion if applicable
 3. Use the gold model to join sources using the canonical names
 
-### Don't map at the value_manage level
-Cross-source mapping happens in SQL (gold models), not in the value mapping
-system. Each scraper keeps its own clean canonicals. The gold model does
-the semantic join.
+### Don't map at the value layer
+Cross-source mapping happens in SQL (gold models), not in `soria value map`.
+Each scraper keeps its own clean canonicals. The gold model does the semantic
+join.
 
 ---
 
@@ -246,15 +243,19 @@ After all mappings are done:
 
 1. **Unmapped count check:** Residual unmapped values are legitimate — they
    represent single-year-only concepts with no cross-era equivalent. Forcing
-   them into canonicals is wrong. Present the count and explain what they are:
-   "38 unmapped = 38 metrics that appear in only one year, no cross-year match."
-   Only escalate if a column has unexpectedly high unmapped counts (>20% of values).
+   them into canonicals is wrong. Present the count and explain: "38 unmapped
+   = 38 metrics that appear in only one year, no cross-year match."
+   Only escalate if a column has unexpectedly high unmapped counts (>20%).
 2. **Ordering check:** Mapping must complete before warehouse publish. Value
    mappings are applied at publish time. If you published before mapping was
-   complete, re-publish with `force=True` to get normalized values into the
-   warehouse.
-3. **Sample check:** Query the warehouse with mapped values and verify they
-   look right in context.
+   complete, re-publish with `--force`:
+   ```bash
+   soria warehouse publish {group_id} --force
+   ```
+3. **Sample check:** Query the warehouse with mapped values:
+   ```bash
+   soria warehouse query "SELECT DISTINCT metric_name FROM bronze.{table} ORDER BY 1"
+   ```
 4. **Completeness check:** Do the mapped values cover all the time periods
    you need? Any gaps where a canonical has data in 2015-2019 but not 2020+?
 
@@ -283,6 +284,9 @@ approval before declaring done.
 cat > ~/.soria-stack/artifacts/map-$(date +%Y%m%d-%H%M%S).md << 'ARTIFACT'
 # Value Mapping Report: [Dataset Name]
 
+## Environment
+[Active soria env]
+
 ## Mapping Summary
 [Status table — columns, canonical counts, mapped/unmapped]
 
@@ -306,7 +310,7 @@ ARTIFACT
    "Adjusted Discharges per Calendar Day" appears, don't just pick one.
    Flag it and let the human decide based on the analytical use case.
 
-2. **Mapping across scrapers in value_manage.** Cross-source alignment
+2. **Mapping across scrapers via `soria value map`.** Cross-source alignment
    happens in SQL gold models, not in the value mapping system. Each
    scraper's values stay independent.
 
@@ -314,24 +318,17 @@ ARTIFACT
    how many columns need work. The survey prevents spending an hour on
    metric_name only to discover comparison_period also needs mapping.
 
-4. **Not batching typos.** If there are 75 casing/typo variants, batch
-   them in one operation. Don't present each one individually.
+4. **Not batching typos.** If there are 75 casing/typo variants, batch them.
+   Don't present each one individually.
 
 5. **Mapping numeric or date columns.** Values like "2020-07" or "1234.56"
    don't need canonicals. Only map categorical string columns.
 
-6. **Pasting UUID prefixes.** `bd1cb019` causes "badly formed hexadecimal UUID
-   string." Always query for the full ID:
-   ```
-   database_query("SELECT id FROM schema_mappings WHERE name = 'metric_name'",
-                  workspace_id="...")
-   ```
-
-7. **Using the word "promote" for mapping operations.** "Canonical promotion"
-   (making a value canonical via `value_manage`) and "workspace promotion to prod"
-   (`workspace_manage(promote)`) are completely different operations. Say
+6. **Using the word "promote" for mapping operations.** "Canonical promotion"
+   (making a value canonical via `soria value map`) and "workspace promotion
+   to prod" (handled by `/promote`) are completely different operations. Say
    "make canonical" or "publish to warehouse" — never "promote" for mapping.
 
-8. **Treating residual unmapped values as errors.** After a complete mapping pass,
-   unmapped = "no cross-era equivalent exists." It's correct data. Don't try to
-   force mappings that aren't semantically valid.
+7. **Treating residual unmapped values as errors.** After a complete mapping
+   pass, unmapped = "no cross-era equivalent exists." It's correct data.
+   Don't try to force mappings that aren't semantically valid.

@@ -24,13 +24,13 @@ When a gate or pattern doesn't fit the problem, document why and work around it.
 ## Working With Data (How to Think)
 
 ### Simplicity over complexity
-If you can answer the question with 1 dashboard and page controls, don't build 5 dashboards.
-If you can answer it with 1 table at the right grain, don't build 6 tables through different lenses.
+If you can answer the question with 1 dive and filter controls, don't build 5 dives.
+If you can answer it with 1 marts model at the right grain, don't build 6 tables through different lenses.
 If you can extract wide and transform in SQL, don't write a complex extractor.
 The simplest approach that produces correct, verifiable data wins. Always.
 
 ### Challenge before building
-When the user asks for 5 dashboards, push back: "Can this be 1 dashboard with page controls
+When the user asks for 5 dives, push back: "Can this be 1 dive with filter controls
 slicing it?" State your case. Don't just do what was asked if a simpler approach serves the
 same need. When the user asks for a complex extraction pipeline, push back: "Can we extract
 wide and let SQL do the reshaping?" Take a position. Expect to be overruled sometimes —
@@ -50,17 +50,13 @@ all skill descriptions and auto-applies the right one based on what the user say
 descriptions as precise trigger conditions, not marketing copy.
 
 Good: "Use when asked to 'scrape this', 'build the pipeline', 'extract this data'. Proactively
-suggest when the user has completed /scout and is ready to build."
+suggest when the user has completed /status and is ready to build."
 
 Bad: "A comprehensive data ingestion skill for building pipelines."
 
 ### Just-in-time context loading
 Don't load everything upfront. The skill is loaded once at invocation (~200-400 lines).
-Ref files are loaded on-demand per gate (~150 lines each). Total context at any point:
-skill + one ref file, not all 1,700 lines.
-
-This is the Vercel "retrieval-led reasoning" principle: the skill pulls in ref files
-just-in-time. The CLAUDE.md stays under 200 lines.
+Total context at any point: skill + ETHOS, not every skill in the pack.
 
 ---
 
@@ -104,6 +100,37 @@ These logs feed into `/lessons` for continuous improvement.
 
 ---
 
+## CLI-First Tool Invocation
+
+### All operations go through `soria`
+Skills drive the platform exclusively through the `soria` CLI. Never invoke
+MCP tools directly. Never hit internal Python modules. The CLI surface is:
+
+```
+soria env       list | branch | teardown | restore | checkout | status | diff
+soria scraper   run | test | upload-urls | confirm
+soria warehouse query | publish | status | unpublish | materialize
+soria schema    read | update | mappings-read | mappings-update
+soria value     read | index | map
+soria model     list | get
+soria extractor list
+soria group     list | show | create | assign
+soria file      show | list | open | reprocess
+soria db        query | schema
+soria list      soria detect  soria extract  soria validate  soria revert
+soria auth      soria --env <local|prod|URL>
+```
+
+If a command the skill needs doesn't exist yet, flag it clearly — don't fall
+back to MCP or direct module imports.
+
+### Environment awareness is mandatory
+Every skill preamble reports `soria env list` active state. Writes against
+prod require explicit acknowledgment — writes while silently pointing at prod
+are never acceptable.
+
+---
+
 ## Pipeline Discipline
 
 ### 1. Think before you build
@@ -115,51 +142,11 @@ Pick the oldest file, the newest file, and one from mid-history. Extract those 3
 ### 3. Extract wide, transform in SQL
 When the source has a wide table (measures as columns), extract it as-is — one row per entity with N value columns. Unpivot to long format in the silver SQL model, not in the extractor. Complex reshaping during extraction fails; simple extraction is reliable extraction.
 
-### 4. Bronze loads all raw data as-is. Silver defines types, unpivots, and cleans
-- **Bronze** = `SELECT *` from the warehouse table with version pin (DuckLake snapshot), no transforms. `kind EXTERNAL` or VIEW wrapper over DuckLake via `@ducklake()` macro. **Bronze tables must be materialized in MotherDuck before any downstream work.** Never run dashboards or silver models on un-materialized DuckLake views.
+### 4. Bronze loads raw data. Silver types, unpivots, and cleans. Gold joins. Marts ship.
+- **Bronze** = raw warehouse tables published from extraction. `soria warehouse publish` is the only way rows land here. Don't hand-insert.
 - **Silver** = explicit `CAST` on every column, unpivot wide metric columns into `metric_name`/`metric_value` rows, rename to clean snake_case, filter invalid records. One silver model per bronze table. No joins in silver.
-
-#### Materialization: what it means and how it works
-
-**What materialization is:** Converting a MotherDuck VIEW into a physical TABLE
-(`CREATE TABLE AS SELECT ...`). Without it, every query on a bronze view chains
-through DuckLake (Postgres catalog lookup ~0.5s) → GCS parquet read (~2s). A
-gold model unioning 22 bronze views = 22 × 2-3s = ~45 seconds. A materialized
-bronze TABLE returns the same data in ~0.03s.
-
-**The strategy:** Materialize bronze. Leave silver/gold/platinum as views. Views
-on top of materialized tables execute in milliseconds — there's no DuckLake
-chain to resolve. Only materialize higher layers if they do heavy unions or
-joins across many tables.
-
-**How to materialize:**
-```
-warehouse_materialize(model_name="bronze.my_table", materialize=True)
-```
-To un-materialize (restore as VIEW):
-```
-warehouse_materialize(model_name="bronze.my_table", materialize=False)
-```
-The `is_materialized` flag on the SqlModelCode record gets updated alongside the
-MotherDuck object.
-
-**Materialized tables are snapshots.** They do NOT auto-update when new data is
-published to DuckLake. After publishing new data, re-materialize bronze to pick
-up the new version. A VIEW would see new data automatically but pays the latency
-cost every query.
-
-**Gotchas:**
-- **Stale after publish:** New data in DuckLake doesn't appear in a materialized
-  TABLE until you re-run `warehouse_materialize`.
-- **Promotion can lose materialization:** If workspace model has
-  `is_materialized=false` but prod had `is_materialized=true`, promoting
-  overwrites the flag. Promote bronze first, verify it materialized, then
-  promote silver.
-- **Workspace vs prod:** `warehouse_materialize` accepts an `environment`
-  parameter. Default is prod. Pass the workspace schema name for workspace
-  materialization.
-- **Verify after materializing:** Always query the materialized table and check
-  row count matches what you expect. Silent failures have happened historically.
+- **Gold** = joins across silvers, business logic, entity resolution, temporal alignment, parent-company rollups.
+- **Marts** (the dive's dbt project, `soria_dives`) = dashboard-ready output. One marts model per dive. Tests via `dbt test`.
 
 ### 5. Silver gets everything — Gold decides what matters
 In silver, unpivot ALL metric columns except dimension columns (identifiers, addresses, dates, provider type). If someone needs "Prepaid Expenses" or "PT Medicaid visits," they shouldn't have to go back to bronze. Gold is where you join across silvers, apply business logic, de-cumulate YTD values, and decide the final grain.
@@ -188,22 +175,22 @@ For pipeline verification: take 3 sample files across eras. For each, pull 10 sp
 
 ---
 
-## SQL & Dashboard Correctness
+## SQL & Dive Correctness
 
 ### 12. Ratios compute after aggregation, never before
 The formula is always `SUM(numerator) / NULLIF(SUM(denominator), 0)`. Never `AVG(pre_computed_ratio)`. Market share = `SUM(company_enrollment) / SUM(total_enrollment)`, not the average of per-plan-type market shares. This prevents the 171% market share class of bugs.
 
-### 13. One table, many views
-Don't create 6 platinum tables for enrollment, market share, YoY, plan count, company mix when they're all the same data through different lenses. Build one silver/gold table at the right grain. Use `@dashboard` page controls and `valueOptions` to switch metrics. Pre-compute only what the frontend can't derive (complex window functions, cross-dataset joins).
+### 13. One marts model, many filter combinations
+Don't create 6 marts models for enrollment, market share, YoY, plan count, company mix when they're all the same data through different lenses. Build one marts model at the right grain. Expose filters through the dive manifest. Pre-compute only what the frontend can't derive (complex window functions, cross-dataset joins).
 
 ### 14. Grain is the hardest SQL decision — answer it first
-Before writing any SQL model, state explicitly: "One row = one [entity] per [time period] per [dimensions]." Then check: does the pivot/dashboard aggregate across any dimension not in the display? If yes, will ratio metrics produce garbage? If yes, either drop that dimension from the grain or only include additive metrics (enrollment, counts) at that grain.
+Before writing any SQL model, state explicitly: "One row = one [entity] per [time period] per [dimensions]." Then check: does the dive pivot/chart aggregate across any dimension not in the display? If yes, will ratio metrics produce garbage? If yes, either drop that dimension from the grain or only include additive metrics (enrollment, counts) at that grain.
 
 ### 15. QUALIFY for dedup, not subqueries
 When the same data appears in multiple source files (e.g., CA Medicaid publishes full snapshots each month), dedup in silver with `QUALIFY ROW_NUMBER() OVER (PARTITION BY [natural key] ORDER BY _source_file DESC) = 1`. Bronze stays a true raw archive.
 
 ### 16. Every column needs a business label
-`column_descriptions` in the MODEL block is required for every silver, gold, and platinum model. These are display names for the dashboard UI — keep them short: `mlr_pct = 'Medical Loss Ratio'`, not `mlr_pct = 'Medical Loss Ratio: amount_incurred / premiums_earned * 100'`.
+Every column in a silver, gold, or marts model needs a display name that the dive manifest can reference. Keep them short: `mlr_pct = 'Medical Loss Ratio'`, not the full formula. Column descriptions live in the dbt model config, not scattered across components.
 
 ---
 
@@ -216,7 +203,7 @@ Pick random values from the source, find them in the output. Necessary but not s
 If `Revenue = Premiums + Products + Services + Investment` within 5% for every year across 10 years, then four independently extracted line items are all correct, all mapped to the right canonical, and all denominated correctly. One wrong denomination (thousands vs millions) blows the sum check immediately. Prefer algebraic consistency checks over random sampling when the data supports it.
 
 ### 19. Tier 3: Derived metric checks are the gold standard
-Compute `Medical Care Ratio = Medical Costs / Premiums`, compare against the company's press release. If it matches, both numerator and denominator are proven correct. Compute `UHC Revenue as % of Total`, compare against Bullfincher. These require multiple independently extracted values to be correct AND correctly mapped — they're the hardest to pass by accident.
+Compute `Medical Care Ratio = Medical Costs / Premiums`, compare against the company's press release. If it matches, both numerator and denominator are proven correct. Compute `UHC Revenue as % of Total`, compare against an external source. These require multiple independently extracted values to be correct AND correctly mapped — they're the hardest to pass by accident.
 
 ### 20. External corroboration closes the loop
 After internal consistency checks, find an external source that independently reports the same metric. If your calculated enrollment mix matches an external report, the data is proven end-to-end. If it doesn't, investigate — the discrepancy reveals either a pipeline bug or a data definition mismatch.
@@ -235,7 +222,7 @@ Before scraping anything, map what combination of sources gives 100% coverage wi
 When joining time-series across sources, state what the join *means* in business terms. "2026 star ratings (released Oct 2025) → October 2025 enrollment" is a semantic decision: that's when analysts evaluate these ratings. Then verify: "Do we have October enrollment for the years we need?" If not, document the gap.
 
 ### 24. Inventory before action
-First step of any new work: check what scrapers, workspaces, groups, and models already exist. Query the database. Don't build what's already there. Don't write a new scraper when files are already downloaded.
+First step of any new work: check what scrapers, environments, groups, and dives already exist. `soria list`, `soria env list`, filesystem walk of `frontend/src/dives/`. Don't build what's already there. Don't write a new scraper when files are already downloaded.
 
 ### 25. Classify effort before committing
 - **Tier 1:** Clean CSVs with consistent schema → scrape + group + schema map + publish, no extraction needed.
@@ -248,17 +235,88 @@ First step of any new work: check what scrapers, workspaces, groups, and models 
 ## Pipeline Architecture
 
 ### 26. ETVL, not ETL
-The pipeline is **Extract → Transform → Value-map → Load**. Transform is arbitrary code on files — not limited to per-file extractors. When the source requires waterfall logic (XBRL → HTML fallback → PDF), cross-file association, or non-deterministic AI re-validation, the Transform step must support it. Flag this complexity at scout time, not mid-pipeline.
+The pipeline is **Extract → Transform → Value-map → Load**. Transform is arbitrary code on files — not limited to per-file extractors. When the source requires waterfall logic (XBRL → HTML fallback → PDF), cross-file association, or non-deterministic AI re-validation, the Transform step must support it. Flag this complexity at plan time, not mid-pipeline.
 
 ### 27. Functions over frameworks
 Pipeline utilities (file normalization, header detection, proxy management, Gemini extraction) should be composable functions you can call, not a rigid framework you're forced through. A base scraper with deletable defaults beats a mandatory template.
 
-### 28. Every dashboard ships with semantic checks
-A platinum model without a companion `gold.semantic_{domain}` model is incomplete.
-The semantic checks table validates data against external benchmarks and self-consistency
-rules across the full time series. `algebraic` and `smoothness` checks are mandatory
-(auto-generatable). `bounded_range`, `monotonicity`, `cagr`, and `structural_break`
-checks require external research — use Exa/Perplexity to find published statistics, then
-encode them with source URLs. All checks produce a standard output schema (defined in
-`/verify`). The semantic table is the durable, automated version of Tier 2 and Tier 3
-verification — once built, it re-runs every data refresh.
+---
+
+## Dive Invariants
+
+### 28. Every dive ships with verify checks
+A dive marts model without rows in `frontend/src/dives/dbt/seeds/verifications.csv`
+is incomplete. Verify checks validate data against external benchmarks and
+self-consistency rules, filtered per-dive by the `model` column. Add at
+least ~15 rows covering top companies × key metrics × key periods for the
+new marts model, plus a few bounded-range rows for overall totals. Every
+non-self-check row needs a real `source` + `source_url` citation (SEC
+filing, KFF report, CMS data). Refresh via `dbt seed --select verifications`.
+The dive component picks them up automatically via `useDiveVerifications`.
+
+### 29. Every dive ships with methodology + verify surfacing
+The dive is not "done" until customers can answer two questions from the
+UI itself:
+- **"How is this built?"** — the component must surface methodology content
+  (sources, metric formulas, grain, update cadence, known gotchas) via
+  `MethodologyModal` or an equivalent panel in `DivePageHeader`. Per-element
+  information buttons are preferred over per-page walls of text.
+- **"How do we know it's right?"** — the component must surface verify
+  check results via `VerifyModal` and per-cell `VerifyTooltip`, backed by
+  rows in the shared verifications seed (#28). The `last_dbt_run` and
+  `last_dbt_test` timestamps must be visible so users know how fresh the
+  checks are (populated by the `vite-dbt-sync` Vite plugin).
+
+These surfaces are a contract with the customer. Shipping a dive without
+them is shipping opaque data.
+
+### 30. Dual-mode loading is the dive performance contract
+Dives load via Postgres proxy first (~500ms first paint) and upgrade to
+DuckDB-WASM in the background (~20s to warm). The skill must distinguish
+"still warming up" from "broken" when validating load. A dive that only
+works after WASM warms is a bug — the Postgres proxy path must always
+return correct data first.
+
+### 31. Manifest is the config — no YAML, no page-level metadata
+A dive's data contract lives in a single `{dive}.manifest.ts` file:
+`{ table, columns, where, filters, groupBy }`. The manifest feeds both
+`useDiveData` at runtime and `/preview` at design time. If you need a new
+filter, add it to the manifest — never hardcode WHERE clauses in the
+component. The manifest is the source of truth for what data the dive
+needs; anything else is drift.
+
+---
+
+## Promotion & Rollback
+
+### 32. Diff-based promotion, never delete-all-insert-all
+Promotion computes the diff against the `cloned_at` snapshot and pushes only
+new/modified/deleted rows — it never wipes and re-inserts. An empty
+environment promoted over prod must be a no-op. This prevents the class of
+bugs where a code-only branch silently wipes production metadata.
+
+### 33. Production is git + CI, not a command
+There is no `soria promote`. The promotion flow is:
+```
+soria env diff → git push → gh pr create → CI runs dbt run + frontend deploy
+```
+Promotion cannot be triggered imperatively. The PR is the audit trail.
+Merge is the gate. CI is the executor.
+
+### 34. `soria revert` is the safety net — use it, don't manually undo
+When a promote breaks something, `soria revert` deletes the promoted rows
+from the target branch. Never hand-write DELETE statements to undo a promote.
+Never force-push to roll back a PR. The revert command is the authoritative
+reversal — use it.
+
+---
+
+## Agent Hygiene
+
+### 35. Don't race the interactive agent
+The Modal sandbox interactive agent verifies PRs, replies to comments, and
+posts investigations to Linear. Skills that operate on open PRs (`/promote`,
+`/smoke`) must check for active agent runs and defer to them. Don't
+duplicate work the agent is already doing. Don't comment on PRs the agent is
+handling. If your skill sees a stuck agent run, surface it in the report —
+don't try to fix it.

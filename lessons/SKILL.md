@@ -1,10 +1,10 @@
 ---
 name: lessons
-version: 3.0.0
+version: 4.0.0
 description: |
   Data pipeline retrospective — reviews recent pipeline work, identifies patterns
   in what went well and what failed, proposes principle updates to ETHOS.md.
-  Reads skill artifacts, searches Claude Code session transcripts, and categorizes
+  Reads skill artifacts, searches prior sessions via mempalace, and categorizes
   lessons learned. The continuous improvement loop for SoriaStack.
   Use when asked to "run lessons", "what did we learn", "review recent work",
   "what went wrong", or periodically after a batch of pipeline work.
@@ -13,6 +13,7 @@ allowed-tools:
   - Read
   - Bash
   - Write
+  - ToolSearch
   - AskUserQuestion
 ---
 
@@ -20,9 +21,10 @@ allowed-tools:
 
 ```bash
 mkdir -p ~/.soria-stack/artifacts
-_BRANCH=$(git branch --show-current 2>/dev/null || echo "unknown")
-echo "BRANCH: $_BRANCH"
-echo "SKILL: retro"
+echo "SKILL: lessons"
+echo "---"
+echo "Active environment:"
+soria env status 2>&1 || echo "  (soria CLI not authed — read-only skill, continue)"
 echo "---"
 echo "Recent artifacts (last 20):"
 ls -t ~/.soria-stack/artifacts/*.md 2>/dev/null | head -20
@@ -31,7 +33,16 @@ echo "Artifact count by skill:"
 ls ~/.soria-stack/artifacts/ 2>/dev/null | sed 's/-[0-9].*$//' | sort | uniq -c | sort -rn
 ```
 
-Read `ETHOS.md` from this skill pack. This skill exists to keep ETHOS.md accurate and current.
+**Load mempalace search** — this skill relies on
+`mcp__openclaw__mempalace_search` which is a deferred tool at session start.
+If it hasn't been loaded yet in this session, load its schema now via
+ToolSearch before running Phase 1:
+
+```
+ToolSearch: "select:mcp__openclaw__mempalace_search"
+```
+
+Read `ETHOS.md`. This skill exists to keep ETHOS.md accurate and current.
 
 ## Skill routing (always active)
 
@@ -40,16 +51,20 @@ pivots to active pipeline work mid-retro, invoke the right skill:
 
 - User wants to investigate a specific pipeline → invoke `/status`
 - User wants to fix something the retro identified → invoke the relevant
-  skill (`/ingest`, `/map`, `/dashboard`, `/verify`) based on what needs fixing
+  skill (`/ingest`, `/map`, `/dive`, `/verify`) based on what needs fixing
 - User wants to plan work based on retro findings → invoke `/plan`
 
 ---
 
 # /lessons — "What did we learn?"
 
-You are running a data pipeline retrospective. Your job is to review recent work, find patterns, and propose improvements to the team's principles and skills. This is how SoriaStack gets better over time.
+You are running a data pipeline retrospective. Your job is to review recent
+work, find patterns, and propose improvements to the team's principles and
+skills. This is how SoriaStack gets better over time.
 
-**The core insight:** Every principle in ETHOS.md maps to a session where the AI violated it and wasted time. New principles should come from the same source — real sessions, real failures, real corrections.
+**The core insight:** Every principle in ETHOS.md maps to a session where
+the AI violated it and wasted time. New principles should come from the same
+source — real sessions, real failures, real corrections.
 
 ---
 
@@ -67,7 +82,6 @@ Read all recent artifacts from `~/.soria-stack/artifacts/`. Each artifact has:
 - Lessons learned (if the skill logged them)
 
 ```bash
-# Read all artifacts from the last N days
 find ~/.soria-stack/artifacts/ -name "*.md" -mtime -14 -exec cat {} \;
 ```
 
@@ -77,12 +91,14 @@ Categorize each artifact:
 - **Failure** — BLOCKED or significant issues found
 - **Near miss** — verification caught something that would have been bad
 
-### Source B: Claude Code Session Transcripts
+### Source B: Prior Session Transcripts (mempalace)
 
-Search for recent data pipeline sessions using context-search:
+Search for recent data pipeline sessions:
 
-```bash
-./tools/context-search "pipeline extraction schema model silver gold" --source claude-code --since {2_weeks_ago} --limit 10
+```
+mcp__openclaw__mempalace_search: query="pipeline extraction dive marts", wing="claude-code", n_results=15
+mcp__openclaw__mempalace_search: query="diagnose silent failure", wing="claude-code", n_results=10
+mcp__openclaw__mempalace_search: query="manifest drift", wing="claude-code", n_results=5
 ```
 
 Look for:
@@ -91,12 +107,12 @@ Look for:
 - Time wasted on approaches that didn't work
 - Insights that aren't yet captured in ETHOS.md
 
-### Source C: Slack Conversations
+### Source C: Meetings / Decisions
 
-Search for data pipeline discussions:
+Search for relevant meeting context:
 
-```bash
-./tools/context-search "pipeline data extraction model dashboard" --source slack --since {2_weeks_ago} --limit 10
+```
+mcp__openclaw__mempalace_search: query="{domain topic}", wing="granola", n_results=5
 ```
 
 Look for:
@@ -111,7 +127,7 @@ Look for:
 Group findings into categories:
 
 ### What Went Well
-- Which principles prevented errors? (e.g., "Test on 3 caught a format change that would have wasted 20 minutes")
+- Which principles prevented errors? (e.g., "Test on 3 caught a format change")
 - Which gates caught issues? (e.g., "Gate 2 schema review — human caught a derivable column")
 - What skills worked as designed?
 
@@ -134,7 +150,7 @@ Group findings into categories:
 | Gate that caught most issues | Gate N | — |
 | Most common correction type | [type] | — |
 | Verification tier that found issues | Tier N | — |
-| Avg gates before human intervention | N | — |
+| Dive failures by category (manifest drift, modal missing, dbt test fail) | counts | — |
 
 ---
 
@@ -144,8 +160,8 @@ Based on the analysis, propose concrete changes:
 
 ### ETHOS.md Updates
 - **New principles** — patterns from real sessions that should be codified
-- **Refined principles** — existing principles that need clarification or strengthening
-- **Deprecated patterns** — principles that no longer apply or were too specific
+- **Refined principles** — existing principles that need clarification
+- **Deprecated patterns** — principles that no longer apply
 
 Format proposals as:
 ```
@@ -163,6 +179,7 @@ Would have prevented: [What specific error this addresses]
 - **Gates to soften** — places where the AI stops unnecessarily
 - **New anti-patterns** — failure modes to document
 - **Description refinements** — better resolver triggers
+- **CLI surface gaps** — commands skills need that don't exist in `soria` yet
 
 ### Open Questions
 - Decisions that came up in sessions but weren't resolved
@@ -194,14 +211,17 @@ RETRO REPORT: [Date Range]
 ## Proposed Skill Changes
 [Each proposal with evidence]
 
+## CLI Gaps Identified
+[soria CLI commands skills need that don't exist]
+
 ## Open Questions
 [Unresolved decisions for the team]
 ```
 
 ### ⛔ GATE: RETRO REVIEW
 Present the report. Do NOT auto-commit any changes to ETHOS.md or skill files.
-Wait for the human to approve specific proposals. Some proposals may be rejected
-or modified — that's the point.
+Wait for the human to approve specific proposals. Some proposals may be
+rejected or modified — that's the point.
 
 ---
 
@@ -229,8 +249,11 @@ Evidence from [N] sessions:
 cat > ~/.soria-stack/artifacts/lessons-$(date +%Y%m%d-%H%M%S).md << 'ARTIFACT'
 # Retro Report: [Date Range]
 
+## Environment
+[Active soria env]
+
 ## Sessions Reviewed
-[List of artifacts and transcripts analyzed]
+[List of artifacts and mempalace hits analyzed]
 
 ## Patterns Found
 [Categorized findings]
@@ -241,6 +264,9 @@ cat > ~/.soria-stack/artifacts/lessons-$(date +%Y%m%d-%H%M%S).md << 'ARTIFACT'
 ## Changes Deferred
 [What was proposed but not approved, with reasoning]
 
+## CLI Gaps
+[soria commands skills needed but couldn't call]
+
 ## Outcome
 Status: DONE
 ARTIFACT
@@ -250,10 +276,18 @@ ARTIFACT
 
 ## Anti-Patterns
 
-1. **Running retro without evidence.** Don't philosophize about what might go wrong. Use real artifacts and real session transcripts.
+1. **Running retro without evidence.** Don't philosophize about what might
+   go wrong. Use real artifacts and real session transcripts.
 
-2. **Proposing principles from one incident.** One failure isn't a pattern. Wait for 2-3 instances before proposing a new principle. Flag it as "emerging pattern" instead.
+2. **Proposing principles from one incident.** One failure isn't a pattern.
+   Wait for 2-3 instances before proposing a new principle. Flag it as
+   "emerging pattern" instead.
 
 3. **Auto-committing changes.** The retro proposes. The human decides. Always.
 
-4. **Ignoring what went well.** Principles that prevented errors are just as important to document as new failures. They validate the system is working.
+4. **Ignoring what went well.** Principles that prevented errors are just as
+   important to document as new failures. They validate the system is working.
+
+5. **Ignoring CLI surface gaps.** If skills keep needing a `soria` command
+   that doesn't exist, that's a signal for the CLI team. Surface it in the
+   retro so it becomes a ticket.

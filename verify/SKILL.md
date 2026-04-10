@@ -1,32 +1,27 @@
 ---
 name: verify
-version: 5.0.0
+version: 6.0.0
 description: |
-  Prove data is correct through evidence, not assertions. Centers on
-  semantic checks — per-domain gold models that validate data shape,
-  trends, and benchmarks across the full time series. Every dashboard
-  ships with semantic checks. Every verification starts by reading the
-  semantic table.
-  Three modes: Pipeline (extraction vs source), Model (trace through
-  layers), Semantic (investigate check failures, gap analysis).
-  Never says "looks good" without showing evidence.
+  Prove data is correct through evidence, not assertions. Centers on verify
+  checks — rows in a shared dbt seed (`verifications.csv`, filtered per-dive
+  by `model` column) that bound the expected range of every cell in the dive.
+  Every dive ships with ~15+ verify check rows. Every verification starts by
+  comparing actual marts values against the bounds in the verifications table.
+  Three modes: Pipeline (extraction vs source), Model (trace through layers),
+  Verify Checks (investigate cell-level bound failures, gap analysis).
+  Drives the Soria platform through `soria warehouse query`, `dbt seed`, and
+  `dbt test`. Never says "looks good" without showing evidence.
   Use when asked to "verify this", "is this data correct", "check the
-  pipeline", "prove it", "validate the model", or "what does this data
-  look like".
-  Proactively invoke this skill (do NOT claim data is correct without
-  evidence) after any /ingest gate, after /dashboard, or when data
-  quality is in question.
-  Use after /ingest, /map, or /dashboard. (soria-stack)
-benefits-from: [ingest, map, dashboard, plan]
+  pipeline", "prove it", "validate the dive", or "what does this data look
+  like". Proactively invoke this skill after any /ingest gate, after /dive,
+  or when data quality is in question. (soria-stack)
+benefits-from: [ingest, map, dive, plan]
 allowed-tools:
-  - sumo_*
-  - exa_*
-  - pplx_*
-  - mcp__perplexity__*
-  - mcp__exa__*
-  - web_fetch
   - Read
   - Bash
+  - Glob
+  - WebFetch
+  - WebSearch
   - AskUserQuestion
 ---
 
@@ -34,31 +29,32 @@ allowed-tools:
 
 ```bash
 mkdir -p ~/.soria-stack/artifacts
-_BRANCH=$(git branch --show-current 2>/dev/null || echo "unknown")
-echo "BRANCH: $_BRANCH"
 echo "SKILL: verify"
 echo "---"
+echo "Active environment:"
+soria env status 2>&1 || echo "  (soria CLI not authed — read-only skill, continue)"
+echo "---"
 echo "Checking for prior artifacts..."
-ls -t ~/.soria-stack/artifacts/plan-*.md ~/.soria-stack/artifacts/ingest-*.md ~/.soria-stack/artifacts/model-*.md 2>/dev/null | head -5
+ls -t ~/.soria-stack/artifacts/plan-*.md ~/.soria-stack/artifacts/ingest-*.md ~/.soria-stack/artifacts/dive-*.md 2>/dev/null | head -5
 ```
 
-Read `ETHOS.md` from this skill pack. Key principles: #10, #11, #17, #18, #19, #20, #28.
+Read `ETHOS.md`. Key principles: #10, #11, #17, #18, #19, #20, #28, #29.
 
 **Phase awareness:** If a /plan artifact exists, read it — it has verification
-criteria for each ETVLR phase. If ingest or model artifacts exist, read those
+criteria for each ETVLR phase. If ingest or dive artifacts exist, read those
 too for table names and schemas.
 
 ## Skill routing (always active)
 
 - Verification reveals extraction bugs → invoke `/ingest`
 - Verification reveals unmapped values → invoke `/map`
-- Verification reveals SQL issues → invoke `/dashboard`
-- Semantic checks don't exist for this domain → invoke `/dashboard` to build them
-- User wants to test the live dashboard in a browser → invoke `/smoke`
+- Verification reveals SQL issues → invoke `/dive`
+- Semantic checks don't exist for this domain → invoke `/dive` to build them
+- User wants to test the live dive in a browser → invoke `/smoke`
 - User wants to check pipeline status → invoke `/status`
 
-**After /verify completes, suggest `/lessons`** if this was the end of a pipeline
-build, or the next ETVLR phase from /plan if verification passed.
+**After /verify completes, suggest `/lessons`** if this was the end of a
+pipeline build, or the next ETVLR phase from /plan if verification passed.
 
 ---
 
@@ -73,106 +69,127 @@ if Tier 2 or 3 are possible.
 
 ---
 
-## Semantic Checks — The Foundation
+## Verify Checks — The Foundation
 
-Semantic checks are gold-layer SQL models that validate data against external
-benchmarks and self-consistency rules across the full time series. They are the
-durable, automated version of what Tier 2 and Tier 3 checks do ad-hoc.
+Verify checks are rows in a **shared dbt seed** at
+`frontend/src/dives/dbt/seeds/verifications.csv`, materialized to
+`soria_duckdb_main.main.verifications`. Every dive's checks are rows in
+this one table, filtered by the `model` column = dbt marts model name.
 
-Every platinum dashboard should have a companion `gold.semantic_{domain}` model.
-If one doesn't exist, that's a coverage gap — flag it, then invoke `/dashboard`
-to build it.
+This is the durable, automated version of what Tier 2 and Tier 3 checks
+do ad-hoc. The dive's `useDiveVerifications(model_name)` hook queries the
+filtered rows and surfaces mismatches via `VerifyTooltip` on every grid cell.
 
 ### Architecture
 
 ```
-gold.semantic_{domain}   -- per-domain, all checks for one dataset
-                            built by /dashboard, read by /verify
+frontend/src/dives/dbt/seeds/verifications.csv       -- git-tracked seed CSV
+  ↓
+  dbt seed --target dev --select verifications
+  ↓
+soria_duckdb_main.main.verifications                 -- materialized table
+  ↓
+useDiveVerifications("naic_national_kpis_by_company")   -- per-dive hook
+  ↓
+VerifyTooltip renders per-cell                       -- user sees bounds + source
 ```
 
-Each domain model is independent. Materialize each as a TABLE after data
-refreshes — the output is small (1,000-5,000 rows per domain), reads are
-instant. The checks are deterministic given the source data.
+### Row schema
 
-### Output schema (every row, every domain)
+Every row in `verifications.csv`:
 
 ```
-check_category   -- which of the 6 categories
-check_name       -- machine name (for matching/dedup)
-check_label      -- human-readable label for display
-grain            -- what dimension this operates on
-period           -- time period covered
-value            -- observed value from our data
-expected_low     -- lower bound of acceptable range
-expected_high    -- upper bound of acceptable range
-pass             -- whether the check passed
-source           -- benchmark source label (or 'self-check')
-source_url       -- URL to verify the benchmark (NULL for self-checks)
-note             -- what this check validates
+id              -- bigint, unique
+model           -- dbt marts model name this check applies to
+description     -- human-readable ("UNH Total membership ~23M")
+parent_company  -- dimension filter (NULL = any)
+lob             -- dimension filter (NULL = any)
+quarter         -- dimension filter, YYYY-MM format (NULL = any)
+metric          -- dimension filter (NULL = any)
+min_value       -- lower bound (bigint)
+max_value       -- upper bound (bigint)
+source          -- external citation label ("UNH 10-K 2024", "KFF MA Spotlight")
+source_url      -- URL to the source
 ```
 
-### The 6 categories
+The `{parent_company, lob, quarter, metric}` tuple identifies which cells in
+the dive grid this check applies to. A check with all dimensions NULL
+applies to the whole model (bounded-range style).
 
-| Category | What it validates | Auto-generatable? |
-|----------|------------------|-------------------|
-| **algebraic** | Parts = whole. Shares sum to ~100%. Derived columns match their formula. | Yes — always include |
-| **smoothness** | No wild swings. No company gains >50% or loses >40% in one year. No MoM total change >5%. | Yes — always include |
-| **bounded_range** | Structural constraints hold every period. Group share 15-21%. No single company >35%. Top-N concentration in expected bands. | Partially — thresholds need domain knowledge |
-| **monotonicity** | Trends go the right direction. Total enrollment increasing (pre-2026). PPO share increasing. | Needs domain knowledge |
-| **cagr** | Long-run growth rates match published history. 10-year CAGR for total market, specific companies. | Needs external research |
-| **structural_break** | Known industry events are visible in the data. CVS replaces Aetna post-2018. Humana dips in 2025. Growth slows post-2022. | Needs external research |
+### Check types (all encoded as rows in the same seed)
 
-**algebraic** and **smoothness** are mandatory for every domain — they need no
-external knowledge and catch the most common pipeline bugs.
+| Type | Row pattern | Example |
+|---|---|---|
+| **Spot check** | One row per cell, tight bounds | UNH Medicare membership in Q2 2025 between 7M–12M |
+| **Bounded range** | One row per metric, wide bounds, other dims NULL | Total market between 220M–350M for any period |
+| **Algebraic** (parts=whole) | Requires code-side check — Not directly expressible as a single seed row. The marts model SQL should enforce the identity itself (e.g. market shares computed via window function so they sum to 100 by construction) | |
+| **External benchmark** | Row with `source` = company 10-K or published report | Humana Q4 2024 total membership 10M–18M with SEC URL |
 
-**bounded_range**, **monotonicity**, **cagr**, and **structural_break** require
-domain research (KFF, MedPAC, SEC filings, earnings transcripts). Built during
-`/dashboard` using Exa/Perplexity.
+### How checks map to tiers
 
-### How semantic checks map to tiers
+| Tier | What it proves | Typical seed pattern |
+|---|---|---|
+| **Tier 1 (Spot Checks)** | Individual values correct | Tight min/max bounds on specific company × period × metric |
+| **Tier 2 (Sum Checks)** | Algebraic consistency | Marts SQL structure + a bounded_range check on totals |
+| **Tier 3 (Derived Metrics)** | External benchmarks match | Rows with `source` + `source_url` citing SEC / earnings / KFF |
 
-| Tier | What it proves | Semantic category |
-|------|---------------|-------------------|
-| Tier 1 (Spot Checks) | Individual values correct | — (still ad-hoc) |
-| Tier 2 (Sum Checks) | Algebraic consistency | `algebraic` |
-| Tier 3 (Derived Metrics) | External benchmarks match | `cagr`, `bounded_range`, `structural_break` |
-
-The semantic table encodes Tier 2 and Tier 3 durably. Once built, they re-run
-every data refresh — no manual verification needed for checks that already pass.
+The verifications seed encodes Tier 1 and Tier 3 durably. Tier 2 algebraic
+consistency is best enforced in the marts SQL itself (computing ratios with
+window functions, not storing pre-aggregated results).
 
 ---
 
-## Step 0: Check the Semantic Table (all modes)
+## Step 0: Check the Verifications Seed (all modes)
 
-Before running any mode, check if semantic checks exist for this domain:
+Before running any mode, check how many verify checks exist for this dive:
 
-```sql
-SELECT check_category,
-  COUNT(*) AS checks,
-  SUM(CASE WHEN pass THEN 1 ELSE 0 END) AS passed,
-  SUM(CASE WHEN NOT pass THEN 1 ELSE 0 END) AS failed
-FROM gold.semantic_{domain}
-GROUP BY 1 ORDER BY 1
+```bash
+# Count rows by model
+soria warehouse query "
+SELECT model, COUNT(*) AS checks, COUNT(DISTINCT metric) AS metrics,
+  COUNT(DISTINCT source) AS sources
+FROM soria_duckdb_main.main.verifications
+WHERE model = '{your_marts_model}'
+GROUP BY 1
+"
 ```
 
 Three outcomes:
 
-1. **Table exists, no failures** — strong foundation. Proceed with the
-   requested mode. Include the scorecard in all output.
+1. **≥15 checks present, covering the key metrics × companies × periods** —
+   strong foundation. Proceed with the requested mode. Include the count in
+   all output.
 
-2. **Table exists, failures present** — investigate failures first (Mode 3).
-   Failures in the semantic table take priority over ad-hoc checks.
+2. **Checks present but sparse** (<10 rows, missing metrics) — coverage gap.
+   Flag in the verdict and suggest invoking `/dive` to add more rows to
+   `verifications.csv`.
 
-3. **Table doesn't exist** — flag as coverage gap. Suggest invoking
-   `/dashboard` to build semantic checks.
+3. **Zero checks** — the dive has no verify content. Shipping blocker.
+   Suggest invoking `/dive` to add check rows.
 
-Include the semantic scorecard in every verification output:
+Include the verify scorecard in every verification output:
 
 ```
-Semantic: gold.semantic_ma_enrollment
-  1,923 checks | 1,880 pass | 43 fail
-  Failing: 17 smoothness (M&A), 6 bounded (early-year), 5 monotonicity (wobble)
+Verifications: model = naic_national_kpis_by_company
+  24 checks | 22 within bounds | 2 failing
+  Failing: UNH Medicare Q1 2024 (observed 8.2M, expected 9.5M–14M — investigate)
+           Total market 2014 (observed 180M, expected 220M–350M — pre-ACA era bounds too tight)
 ```
+
+### Also check the methodology surfacing
+
+Per Principle #29, every dive ships with methodology content (the
+"how this is built" panel users see). Verify it exists — the pattern
+varies per dive, so check whichever is used in this codebase:
+
+```bash
+# Search the dive component and its companion files for methodology content
+grep -l "methodology\|Methodology" frontend/src/dives/{dive-id}.tsx
+grep -rl "methodology" frontend/src/dives/ 2>/dev/null | grep "{dive-id}"
+```
+
+If the dive component renders no methodology content and there's no
+companion file, flag it as a shipping blocker in the verdict.
 
 ---
 
@@ -192,25 +209,27 @@ across 10 years, four independently extracted items are all correct.
 **Tier 3 is the hardest to pass by accident.** If your computed MCR matches
 UNH's press release, both numerator and denominator are proven correct.
 
-**The semantic table encodes Tier 2 + 3 durably.** The `algebraic` category
-is Tier 2 running automatically. The `cagr` and `bounded_range` categories
-are Tier 3 with source URLs.
-
 ---
 
 ## Mode 1: Pipeline Verify
 
-**When to use:** After extraction (/ingest Gate 3 or Gate 4). Verifies that the
-extraction pipeline correctly pulled data from source files.
+**When to use:** After extraction (/ingest Gate 3 or Gate 4). Verifies that
+the extraction pipeline correctly pulled data from source files.
 
 ### Steps
 
-1. **Select 3 sample files** across eras (oldest, newest, mid-history).
+1. **Select 3 sample files** across eras (oldest, newest, mid-history):
+   ```bash
+   soria file list --group {group_id} --limit 50
+   ```
 
 2. **For each file, run Tier 1 — Spot Checks:**
-   - Open the source document (PDF, XLSX, or CSV)
+   - Open the source document (`soria file open {file_id}` for PDFs/Excel)
    - Pick 10 specific values spread across different columns and rows
-   - Find the same values in the extracted output
+   - Find the same values in the extracted output:
+     ```bash
+     soria warehouse query "SELECT * FROM bronze.{table} WHERE _source_file LIKE '%{filename}%' LIMIT 20"
+     ```
    - Show the comparison as a table with match/mismatch per value
 
 3. **If the data supports it, run Tier 2 — Sum Checks:**
@@ -221,11 +240,12 @@ extraction pipeline correctly pulled data from source files.
 
 4. **If external data exists, run Tier 3 — Derived Metric Checks:**
    - Compute a derived metric from the extracted data
-   - Compare against an independently published number
+   - Compare against an independently published number (`WebFetch` the source)
 
 ### Output
 ```
 Pipeline Verification: cms_hospital_cost_report
+Environment: prickle-bottle
 ├── Tier 1 (Spot Checks): 30/30 values match across 3 files
 ├── Tier 2 (Sum Checks): total = components +/- 0.1% across 14 years
 └── Tier 3 (Derived): operating_margin matches CMS benchmarks +/- 0.5%
@@ -237,8 +257,8 @@ Confidence: HIGH — all three tiers pass
 
 ## Mode 2: Model Verify
 
-**When to use:** After building SQL models (/dashboard). Verifies that data flows
-correctly through bronze → silver → gold → platinum.
+**When to use:** After building a dive (`/dive`). Verifies that data flows
+correctly through bronze → silver → gold → marts.
 
 ### Steps
 
@@ -251,21 +271,26 @@ correctly through bronze → silver → gold → platinum.
 
    | Layer | Table | Value | Correct? |
    |-------|-------|-------|----------|
-   | Bronze | bronze.unh_10k_financials | 371622 (millions) | yes |
-   | Silver | silver.stg_unh_financials | metric='total_revenue', value=371622 | yes |
-   | Gold | gold.insurer_financials | total_revenue=371622000000 (scaled) | yes |
-   | Platinum | platinum.insurer_kpi_dashboard | revenue='$371.6B' | yes |
+   | Bronze | bronze.unh_10k_financials | 371622 (millions) | ✅ |
+   | Silver | silver.stg_unh_financials | metric='total_revenue', value=371622 | ✅ |
+   | Gold | gold.insurer_financials | total_revenue=371622000000 (scaled) | ✅ |
+   | Marts | soria_duckdb_main.main_marts.insurer_kpi | revenue='$371.6B' | ✅ |
    ```
 
-3. **In workspace contexts, use workspace schema:**
-   `{layer}__{postgres_schema}.{model_name}` — NOT `{layer}.{model_name}`.
-   `sql_model_save` does NOT auto-materialize. Call `warehouse_materialize`
-   in dependency order: silver → gold → platinum.
+3. **Run `dbt run` and `dbt test` for the dive's models:**
+   ```bash
+   cd frontend/src/dives/dbt
+   dbt run --target dev --select {model}+
+   dbt test --target dev --select {model}+
+   ```
+
+   `+` includes downstream models. `+{model}` includes upstream. `+{model}+`
+   includes both.
 
 4. **Check for fan-out or fan-in bugs:**
    - Does joining in gold multiply rows?
    - Does dedup in silver drop too many rows?
-   - Does aggregation in platinum collapse the right dimensions?
+   - Does aggregation in marts collapse the right dimensions?
 
 5. **Verify ratio computation:**
    - Confirm ratios are computed AFTER aggregation, not averaged
@@ -276,89 +301,99 @@ correctly through bronze → silver → gold → platinum.
 
 ---
 
-## Mode 3: Semantic Verify
+## Mode 3: Verify Checks (cell-level bounds)
 
-**When to use:** After /dashboard builds a platinum model and its companion
-semantic checks. Also when investigating data quality concerns, after a data
-refresh produces new failures, or when asked "is this data correct?"
+**When to use:** After `/dive` builds a dive and adds rows to
+`verifications.csv`. Also when investigating data quality concerns, after
+a data refresh produces new failures, or when asked "is this data correct?"
 
-This is the primary verification mode for analytical correctness. If semantic
-checks exist, start here. If they don't, flag the gap and invoke `/dashboard`.
+This is the primary verification mode for analytical correctness. If
+verify checks exist, start here. If they don't, flag the gap and invoke
+`/dive`.
 
 ### Steps
 
-1. **Run the scorecard:**
+1. **Pull all checks for this dive's model and join against the actual data
+   to find mismatches:**
 
-   ```sql
-   SELECT check_category,
-     COUNT(*) AS checks,
-     SUM(CASE WHEN pass THEN 1 ELSE 0 END) AS passed,
-     SUM(CASE WHEN NOT pass THEN 1 ELSE 0 END) AS failed
-   FROM gold.semantic_{domain}
-   GROUP BY 1 ORDER BY 1
+   ```bash
+   soria warehouse query "
+   WITH checks AS (
+     SELECT * FROM soria_duckdb_main.main.verifications
+     WHERE model = '{your_marts_model}'
+   ),
+   actual AS (
+     SELECT parent_company, lob, quarter, metric, value
+     FROM soria_duckdb_main.main_marts.{your_marts_model}_long_format  -- if available
+   )
+   SELECT c.id, c.description, c.parent_company, c.lob, c.quarter, c.metric,
+     c.min_value, c.max_value, a.value,
+     CASE
+       WHEN a.value BETWEEN c.min_value AND c.max_value THEN 'PASS'
+       WHEN a.value IS NULL THEN 'NO_DATA'
+       ELSE 'FAIL'
+     END AS status,
+     c.source, c.source_url
+   FROM checks c
+   LEFT JOIN actual a
+     ON (c.parent_company IS NULL OR c.parent_company = a.parent_company)
+    AND (c.lob IS NULL OR c.lob = a.lob)
+    AND (c.quarter IS NULL OR c.quarter = a.quarter)
+    AND (c.metric IS NULL OR c.metric = a.metric)
+   ORDER BY status, c.id
+   "
    ```
 
-   If all pass, skip to step 4 (gap analysis).
+   Adjust the `actual` CTE to match the shape of your marts model — some
+   are wide (one row per entity × period with metric columns) and need an
+   UNPIVOT; others are already long.
 
-2. **Investigate failures:**
-
-   ```sql
-   SELECT check_category, check_name, period,
-     ROUND(value, 2) AS value,
-     ROUND(expected_low, 2) AS low,
-     ROUND(expected_high, 2) AS high, note
-   FROM gold.semantic_{domain}
-   WHERE NOT pass
-   ORDER BY check_category, check_name, period
-   ```
-
-   For each failure, determine the cause using the investigation patterns.
-
-3. **Classify each failure:**
+2. **Classify each failing row:**
 
    | Classification | Meaning | Action |
    |---------------|---------|--------|
-   | **Pipeline bug** | Data is actually wrong | Fix (invoke /ingest or /dashboard) |
-   | **Merger/acquisition** | Company structural change | Document with source URL |
-   | **Source data limitation** | Source agency methodology change | Document impact |
-   | **Known industry event** | Documented market shift | Document with source URL |
-   | **Threshold too tight** | Bounds need adjustment | Adjust with justification |
+   | **Pipeline bug** | Data is actually wrong | Fix (invoke /ingest or /dive) |
+   | **Merger/acquisition** | Company structural change | Update the check's `description` to note M&A |
+   | **Source data limitation** | Source agency methodology change | Widen bounds with rationale in description |
+   | **Known industry event** | Documented market shift | Update check `description` and keep bounds |
+   | **Threshold too tight** | Bounds need adjustment | Widen bounds, note the source of the widened range |
 
-   **Investigation patterns by category:**
+3. **Investigation patterns:**
 
-   - **smoothness** — Query years around the swing. Check for company
-     appearing/disappearing. Search Exa for M&A. Most are mergers.
-   - **bounded_range** — Check if era-specific. Market structure changes
-     over decades — bounds for 2015-2025 may not hold for 2009-2012.
-   - **monotonicity** — Small wobble (0.2pp) is noise. Large drop (5pp+)
-     is a reclassification event. Check the source data.
-   - **algebraic** — NEVER classify away. Parts must equal whole. If they
-     don't, something is broken. Investigate immediately.
-   - **cagr/structural** — Compare against the source URL in the check.
-     Wrong benchmark → fix the check. Data disagrees → investigate pipeline.
+   - **Company × metric out of bounds** — search mempalace for earnings
+     transcripts mentioning the company + quarter. Check SEC filings for
+     restatements. Most common cause: M&A.
+   - **Bounded-range check fails for total market** — check era. Pre-ACA
+     (2014) bounds often need separate rows than post-ACA.
+   - **Derived-metric checks** (market share, YoY) — if the raw component
+     checks pass but the derived fails, investigate the computation (ratios
+     before aggregation? missing partition columns?).
+   - **Checks with NO_DATA** — the check references a parent_company, LOB,
+     or quarter that doesn't exist in the marts table. Either the check's
+     dimensions are wrong, or the data is missing.
 
 4. **Gap analysis:**
 
-   List every filter dimension and metric in the platinum model. For each,
-   check whether semantic checks cover it:
+   List every filter dimension and metric in the manifest. For each, check
+   whether verify check rows cover it:
 
    ```
-   Coverage: platinum.ma_enrollment_dashboard
-   ├── segment: MA (covered), PDP (covered)
-   ├── distribution: Individual (covered), Group (partial — 1 check)
-   ├── network_category: HMO, PPO, Other (all covered)
-   ├── parent_organization: top-5 specific + smoothness for >100K
-   ├── enrollment: algebraic + monotonicity + CAGR + smoothness
-   ├── market_share_pct: algebraic (sum to 100%)
-   ├── yoy_delta: algebraic (= enrollment - prior)
-   └── yoy_delta_pct: bounded_range + smoothness
+   Coverage: ma-enrollment dive (model = ma_enrollment_by_company)
+   ├── segment: MA (8 checks), PDP (4 checks)
+   ├── distribution: Individual (6 checks), Group (1 check — weak)
+   ├── parent_organization: top-5 specific rows + 2 bounded rows for overall
+   ├── enrollment: 12 checks across 6 companies × 2 quarters
+   ├── market_share_pct: 0 checks (should add — partition-level bounds)
+   ├── yoy_delta: 0 checks (derivable — algebraic enforced in SQL)
+   └── recent quarter (2025-Q4): 0 checks (add when data lands)
    ```
 
-   Flag dimensions with zero or weak coverage. Suggest additions.
+   Flag dimensions with zero or weak coverage. Suggest rows to add to
+   `verifications.csv` via `/dive`.
 
 5. **External corroboration (when investigating failures):**
 
-   Use Exa/Perplexity to find independent sources:
+   Use `WebSearch` / `WebFetch` to find independent sources:
    - Industry reports (KFF, MedPAC, Avalere, CBO)
    - SEC filings (merger announcements, enrollment disclosures)
    - Earnings transcripts (company-reported metrics — Tier 3 power move)
@@ -367,16 +402,19 @@ checks exist, start here. If they don't, flag the gap and invoke `/dashboard`.
 ### Output
 
 ```
-Semantic Verification: ma_enrollment
-├── Scorecard: 1,923 checks, 97.8% pass rate
-├── Failures: 43
-│   ├── 17 M&A events (documented with source URLs)
-│   ├── 12 source data limitations (CMS methodology)
-│   ├── 6 early-year bounds (market structure different pre-2013)
-│   ├── 5 monotonicity wobble (noise)
-│   ├── 3 under investigation
-│   └── 0 pipeline bugs
-├── Coverage: 8/8 categories, all filter dimensions covered
+Verify Checks: ma-enrollment dive (model = ma_enrollment_by_company)
+Environment: prickle-bottle
+
+├── Check rows: 32 (within bounds: 29, failing: 3)
+├── Failing rows:
+│   ├── UNH Medicare Q1 2024: observed 8.2M, expected 9.5M–14M
+│   │    → classified: source_data_limitation (CMS mid-year contract split)
+│   ├── Total market 2013-Q4: observed 14.8M, expected 16M–20M
+│   │    → classified: threshold_too_tight (pre-ACA era — widen bounds)
+│   └── Centene Medicaid 2022: observed 22M, expected 14M–19M
+│    → classified: M&A (WellCare integration finished 2022)
+├── Coverage: 6/8 manifest dimensions have rows; market_share_pct has 0 checks (GAP)
+├── Methodology: ✅ surfaced via DivePageHeader.methodology prop
 ├── Concerns:
 │   1. Parent org mapping instability (BCBS Michigan)
 │   2. Dec→Jan enrollment drops (2009-2011)
@@ -394,17 +432,16 @@ relevant ones after each phase completes.
 
 ---
 
-## When Things Fail: Check Logfire
+## When Things Fail
 
 Don't conclude "the data is wrong" until you've checked infrastructure.
+Invoke `/diagnose` for:
 
-| Symptom | Likely cause | Fix |
-|---------|-------------|-----|
-| Dashboard 504 | Query >45s | Pre-aggregate in gold |
-| Missing bronze data | Parquet 404 in GCS | Re-materialize bronze |
-| Silver model fails | Column name mismatch | Fix silver CAST |
-| Semantic model fails | CTE error or timeout | Check upstream materialization |
-| Spot check mismatch | Extraction error | Trace back to /ingest |
+- Slow queries (may be stale dbt marts — check `frontend/public/dbt-run-results.json`)
+- Missing data (may be a Durable Object event relay issue)
+- Dive load failures (may be manifest/data drift, WASM cold start, or PG proxy timeout)
+- Stale `last_dbt_run` in the VerifyModal (vite-dbt-sync plugin hasn't run
+  — start the frontend dev server)
 
 ---
 
@@ -412,14 +449,23 @@ Don't conclude "the data is wrong" until you've checked infrastructure.
 
 ```bash
 cat > ~/.soria-stack/artifacts/verify-$(date +%Y%m%d-%H%M%S).md << 'ARTIFACT'
-# Verification Scorecard: [Dataset/Model Name]
+# Verification Scorecard: [Dive/Model Name]
+
+## Environment
+[Active soria env]
 
 ## Mode
-[Pipeline / Model / Semantic]
+[Pipeline / Model / Verify Checks]
 
-## Semantic Checks
-[Scorecard: total checks, pass rate, failure breakdown by classification]
-[Coverage: which dimensions/metrics covered, which are gaps]
+## Verify Checks
+[Count of rows in verifications table for this model]
+[Failing rows with classification: pipeline bug / M&A / source limitation /
+ threshold too tight / known event]
+[Coverage: which dimensions/metrics have checks, which are gaps]
+
+## Methodology Surface
+[How the dive surfaces methodology — inline, DivePageHeader prop, sibling
+ component — and whether it has real content or is empty]
 
 ## Tier Results
 [Which tiers run, specific evidence for each]
@@ -444,13 +490,16 @@ ARTIFACT
 ## What "Done" Means
 
 Verification is DONE when you can produce a scorecard showing:
-1. The semantic check summary (or a note that checks don't exist yet)
+1. The verify check row count (or a note that zero rows exist yet — shipping
+   blocker)
 2. Which modes and tiers were run
 3. Specific evidence for each (tables, not just "looks good")
-4. Every semantic check failure investigated and classified
-5. A confidence level with justification
-6. Any concerns, ranked by severity
+4. Every failing check row investigated and classified
+5. Methodology surface confirmed present with real content
+6. A confidence level with justification
+7. Any concerns, ranked by severity
 
 **Never say "the data looks correct" without a scorecard.**
 **Never say "all checks pass" without showing the checks.**
-**Never leave semantic check failures uninvestigated.**
+**Never leave failing verify rows uninvestigated.**
+**Never declare a dive verified without confirming methodology content exists.**

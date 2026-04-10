@@ -1,70 +1,164 @@
 ---
 name: tools
-version: 1.0.0
+version: 2.0.0
 description: |
-  Load the Soria data platform MCP tools into the session. The Soria MCP server
-  provides all tools for working with Soria's data — scrapers, schemas,
-  extractions, value maps, warehouse publishing, SQL models, dashboards, and
-  news intelligence. These tools are DEFERRED at session start, meaning they
-  exist but have no schema loaded and CANNOT be called until discovered via
-  ToolSearch. Run /tools at the START of every session before doing ANY work
-  with the Soria platform. This is not just for skills — any direct MCP tool
-  call (sumo_*, news_*, mcp__sumo__*) will fail without running /tools first.
-  If you see a Soria MCP tool name in the deferred tools list, that means
-  /tools has not been run yet. Run it immediately, do not ask the user.
+  Verify the Soria CLI is installed and report the active environment.
+  Run at the START of every session alongside /env. This skill replaces
+  the old MCP tool loader — there are no MCP tools to load anymore.
+  All skills drive the Soria platform through the `soria` CLI.
+  If you see "soria not found" or "no active environment", run this skill
+  to diagnose and fix before doing any other work.
 allowed-tools:
-  - ToolSearch
+  - Read
+  - Bash
 ---
 
-# /tools — Load Soria Platform Tools
+# /tools — Verify CLI + Active Environment
 
-You are loading the MCP tools needed to work on Soria's data stack.
+You are checking that the Soria CLI is installed and that an environment is
+active. **No Soria MCP tools to load** — the Soria platform is driven
+entirely through the `soria` CLI now.
 
-**Run these ToolSearch calls to discover all available platform tools:**
+External MCP tools are still allowed where skills reference them:
+`mcp__linear__*` (owned by `/ticket` — `/diagnose` and `/promote` invoke
+`/ticket` rather than calling Linear directly) and
+`mcp__openclaw__mempalace_search` (for `/lessons`, `/map`, `/dive`, `/plan`,
+`/ticket` — domain grounding and prior-session search). Those do NOT need
+to be loaded via ToolSearch at session start — Claude Code loads them on
+first use. This skill does not touch them.
 
-```
-ToolSearch: "sumo" (max_results: 20)
-ToolSearch: "news" (max_results: 10)
-ToolSearch: "scrape" (max_results: 10)
-ToolSearch: "schema" (max_results: 10)
-ToolSearch: "extract" (max_results: 10)
-ToolSearch: "warehouse" (max_results: 10)
-ToolSearch: "dashboard" (max_results: 10)
-ToolSearch: "value" (max_results: 10)
-```
-
-Run all 8 searches in parallel. After results come back, print a summary:
-
-```
-Soria Platform Tools Loaded
 ---
-Sumo tools:      [count]
-News tools:      [count]
-Scrape tools:    [count]
-Schema tools:    [count]
-Extract tools:   [count]
-Warehouse tools: [count]
-Dashboard tools: [count]
-Value tools:     [count]
----
-Total: [count] tools ready
+
+## Step 1: CLI installed?
+
+```bash
+which soria && soria --version
 ```
 
-Then say: "Tools loaded. Ready for /status, /plan, /ingest, /map, /dashboard, /verify, /diagnose, or /newsroom."
+If missing:
+
+```
+⚠️  soria CLI not installed.
+
+Install from the soria-2 repo root:
+
+    uv tool install --from ./cli soria-cli
+    soria auth setup
+    soria shell-setup >> ~/.zshrc
+    source ~/.zshrc
+
+Then re-run /tools.
+```
+
+STOP if the CLI is missing. Don't try to work around it.
+
+## Step 2: Auth configured?
+
+```bash
+soria env list 2>&1 | head -5
+```
+
+If the output is `{"error": "No prod server configured. Run: soria auth setup"}`:
+
+```
+⚠️  soria auth not set up.
+
+Run:
+
+    soria auth setup
+
+This prompts for the prod server URL and opens a browser for OAuth.
+
+Then re-run /tools.
+```
+
+STOP if auth isn't configured.
+
+## Step 3: Active environment?
+
+```bash
+soria env status
+```
+
+Report what `soria env status` returns. If the output indicates no active
+env, tell the user:
+
+```
+No active environment.
+
+Run /env to list and switch to one, or /env branch to create a new dev env.
+```
+
+## Step 3b: dbt profile set up?
+
+```bash
+cd frontend/src/dives/dbt 2>/dev/null && dbt debug --target dev 2>&1 | tail -20 || echo "(dbt project not present — skip)"
+```
+
+If the dbt project exists and `dbt debug` fails, the `soria_dives` profile
+isn't configured or MotherDuck credentials are missing. Tell the user to
+check `~/.dbt/profiles.yml` or the `MOTHERDUCK_TOKEN` env var. This is a
+one-time setup that every new developer hits.
+
+## Step 4: Prod warning
+
+If the active environment is `prod`:
+
+```
+⚠️  POINTING AT PROD
+
+All write-path skills (/ingest, /map, /parent-map, /dive) will refuse to
+run against prod without explicit acknowledgment. /promote is the only
+skill that expects to touch prod.
+
+To switch to a dev env: soria env checkout <name>
+To create a new dev env: soria env branch <name>
+```
+
+## Step 5: Summary
+
+Print a concise summary:
+
+```
+Soria CLI ready.
+  Version: soria X.Y.Z
+  Auth:    configured (prod: https://...)
+  Active:  prickle-bottle (dev)
+
+Next: /status (inventory), /plan (design work), /ingest (scrape),
+      /dive (build a dive), /verify (check correctness).
+```
 
 ---
 
 ## Skill routing (always active)
 
-After tools are loaded, the user's next message determines which skill to invoke.
+After /tools, the user's next message determines which skill to invoke.
 Do NOT answer directly — invoke the matching skill via the Skill tool:
 
 - "What's the status of X", "let's work on X" → invoke `/status`
 - "Come up with a plan", "what should we do" → invoke `/status` first, then `/plan`
+- "Manage envs", "switch env", "new branch" → invoke `/env`
 - "Scrape this", "build the pipeline", "extract" → invoke `/ingest`
 - "Value map", "normalize values", "canonical" → invoke `/map`
-- "Build a model", "make a dashboard", "write SQL" → invoke `/dashboard`
-- "Verify", "spot check", "profile the data", "review SQL" → invoke `/verify`
-- "This isn't working", "it broke", "nothing happened", "wrong data" → invoke `/diagnose`
+- "Map parent companies" → invoke `/parent-map`
+- "Build a dive", "build a dashboard", "write the SQL" → invoke `/dive`
+- "Show me the dive", "preview" → invoke `/preview`
+- "Verify", "spot check", "prove it" → invoke `/verify`
+- "Test the UI", "click through it", "browser QA" → invoke `/smoke`
+- "This isn't working", "it broke", "wrong data" → invoke `/diagnose`
+- "Promote", "push to prod" → invoke `/promote`
 - "News pipeline", "tune prompts" → invoke `/newsroom`
 - "Retro", "what did we learn" → invoke `/lessons`
+
+---
+
+## Anti-Patterns
+
+1. **Looking for MCP tools.** There are no Soria MCP tools. There is no
+   ToolSearch call to run. The `soria` CLI is the only surface.
+2. **Running other skills when the CLI is missing or auth isn't set up.**
+   Every skill depends on the CLI — fix the CLI first.
+3. **Proceeding silently when the active env is prod.** Print the warning
+   and wait for explicit user acknowledgment before suggesting any
+   write-path skill.

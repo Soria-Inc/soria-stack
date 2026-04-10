@@ -1,61 +1,28 @@
-# SoriaStack — Data Pipeline Skills
+# SoriaStack — Agent Instructions
 
-SoriaStack is a collection of SKILL.md files that give AI agents structured roles for
-data pipeline work. Fourteen skills following the ETVLR framework:
-Extract → Transform → Value-map → Load → Represent.
+This file exists for agents (Claude Code, Clawd, etc.) that look for an
+`AGENTS.md` by convention. The content lives in `README.md` — read that.
 
-## Available skills
+## Key rules for agents
 
-Skills live in their own directories. Invoke them by name (e.g., `/status`).
+1. **Start every session with `/env` then `/tools`.** No other skill should
+   run until the active environment is known and the `soria` CLI is verified.
+2. **No Soria MCP.** The Soria platform is driven exclusively through the
+   `soria` CLI. Never load `sumo_*` / `news_*` / `mcp__sumo__*` tools.
+   External MCP is OK where scoped: `mcp__linear__*` is owned by `/ticket`
+   (other skills invoke `/ticket` rather than calling Linear directly);
+   `mcp__openclaw__mempalace_search` is used for domain grounding and
+   prior-session search across several skills.
+3. **Git-native authoring.** Scrapers, dbt SQL, manifests, dive TSX all live
+   as files in the env's worktree. Commit in logical chunks as you go.
+4. **Prod safety.** Every write-path skill refuses to run against prod
+   unless the user explicitly acknowledges. `/promote` is the only skill
+   that's expected to interact with prod, and it does so via PR, not direct
+   writes.
+5. **Read `ETHOS.md`** before any data pipeline work. All numbered
+   principles apply.
 
-| Skill | What it does |
-|-------|-------------|
-| `/tools` | Load Soria MCP tools. Run first in every session. |
-| `/status` | Investigate what exists for a concept — 9-stage pipeline inventory. |
-| `/plan` | ETVLR orchestrator — break work into phases, plan verification upfront. |
-| `/ingest` | Scrape, organize, extract, and publish with five hard-stop gates. |
-| `/map` | Value mapping — normalize raw values to canonical forms across eras. |
-| `/parent-map` | Resolve company names/codes to ultimate parent companies via parallel.ai. One centralized table, all data sources. |
-| `/dashboard` | Design bronze → silver → gold → platinum SQL models. Grain-first. Includes data survey, SQL review checklist, and semantic check building. |
-| `/verify` | Prove data is correct. Semantic checks foundation — 6 categories, standard schema, investigation workflow. Pipeline verify, model verify, semantic verify. |
-| `/smoke` | Adversarial browser QA — headless browser clicks every dashboard control, checks for breakage. |
-| `/diagnose` | Diagnose failures: silent failures, data traces, schema mismatches, infra issues. Creates Linear tickets. |
-| `/promote` | Promote workspace to production. REQUIRES human approval. Only path to prod. |
-| `/preview` | Render dashboard data as markdown tables in chat. |
-| `/newsroom` | News pipeline ops — branch management, prompt tuning, source review. |
-| `/lessons` | Review recent work, find patterns, propose principle updates. |
+## Skill index
 
-## Principles
-
-Read `ETHOS.md` before any data pipeline work. Includes:
-- 28 numbered data principles
-- Resolver pattern (context efficiency)
-- Completion & escalation protocol
-- Anti-sycophancy & simplicity guidance
-
-## Skill chaining (ETVLR)
-
-```
-/tools (load MCP — always first)
-   ↓
-/status → status report (what exists, what's missing)
-   ↓
-/plan → ETVLR plan (phases, verification criteria, sequencing)
-   ↓
-/ingest → ingest report (files, schema, extraction results, tables)
-   ↓
-/map → mapping report (canonical values, decisions made)
-   ↓
-/dashboard → model spec (grain, SQL models, dashboard config, semantic checks)
-   ↓
-/verify → scorecard (semantic check results, tier evidence, confidence)
-   ↓
-/lessons → retro report (patterns, principle updates) [periodic]
-
-   + /smoke (browser QA — after dashboard deploy)
-   + /diagnose (enters from any phase when something breaks)
-   + /preview (render dashboard data in chat — any time)
-```
-
-Artifacts saved to `~/.soria-stack/artifacts/`. Each skill reads prior artifacts
-and writes its own. Every artifact includes completion status and lessons learned.
+See `README.md` for the full skill list and architecture diagram. Skills
+live in their own directories — invoke by name (e.g., `/status`).

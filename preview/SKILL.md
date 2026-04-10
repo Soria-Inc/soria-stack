@@ -1,48 +1,71 @@
 ---
 name: preview
-version: 2.0.0
+version: 3.0.0
 description: |
-  Render dashboard output as markdown tables in chat — simulating the frontend
-  experience without opening a browser. Shows controls, actual pivot data, and
-  a verdict on data quality.
-  Use when asked to "show me the dashboard", "what does this look like",
-  "preview this", "show me slices", or "review the dashboard output".
-  Use after /dashboard or /verify to inspect what was built. (soria-stack)
-benefits-from: [dashboard, verify]
+  Render a dive as markdown tables in chat — simulating the frontend experience
+  without opening a browser. Reads the dive manifest, builds SQL from it,
+  queries MotherDuck via `soria warehouse query`, and formats the output as
+  pivot tables matching what the dive displays.
+  Read-only. Use when asked to "show me the dive", "what does this look like",
+  "preview this", "show me slices", or "review the dive output".
+  Use after /dive or /verify to inspect what was built. (soria-stack)
+benefits-from: [dive, verify]
 allowed-tools:
-  - sumo_*
+  - Read
+  - Bash
+  - Glob
   - AskUserQuestion
 ---
 
+## Preamble (run first)
+
+```bash
+mkdir -p ~/.soria-stack/artifacts
+echo "SKILL: preview"
+echo "---"
+echo "Active environment:"
+soria env status 2>&1 || echo "  (soria CLI not authed — run /env first)"
+```
+
+Read `ETHOS.md`. Preview is read-only — no writes, no acknowledgment needed,
+but always report the active env so the user knows which data they're seeing.
+
 ## Skill routing (always active)
 
-- User wants to fix data → invoke `/verify`
-- User wants to rebuild the model → invoke `/dashboard`
+- User wants to fix the data → invoke `/verify` then `/diagnose` or `/ingest`
+- User wants to rebuild the dive → invoke `/dive`
 - User wants pipeline status → invoke `/status`
 - User says "push to prod" → invoke `/promote`
 
 ---
 
-# /preview — "Show me the dashboard"
+# /preview — "Show me the dive"
 
-**Read-only.** Query warehouse data, format as markdown tables. Simulate what
-the frontend shows. Do not build, fix, or modify anything.
+**Read-only.** Read the dive manifest, build SQL from its `{table, columns,
+where, filters}`, query MotherDuck via `soria warehouse query`, format as
+markdown tables matching how the dive displays in the browser.
+
+Do not build, fix, or modify anything.
 
 ---
 
 ## Output Template
 
-Every dashboard preview follows this structure, in this order:
+Every dive preview follows this structure, in this order:
 
 ```
-## Dashboard N: [Name] (`platinum.table_name`)
+## Dive: [Name] (`{id}`)
 
-**What the user sees:** [1-line grain description]
+**Environment:** [active env]
+**Marts model:** `soria_duckdb_main.main_marts.{model}`
 
-**Controls:**
-| Control | Options | Default |
-|---------|---------|---------|
-| [filter] | [values] | [default] |
+**What the user sees:** [1-line grain description from manifest or dive component]
+
+**Controls (from manifest):**
+| Filter | Values | Default | Prefetch |
+|--------|--------|---------|----------|
+| segment | MA, PDP, Total | MA | yes |
+| distribution | Individual, Group | Individual | no |
 
 ---
 
@@ -52,10 +75,13 @@ Every dashboard preview follows this structure, in this order:
 **Slice: [2nd key slice]**
 [markdown pivot table — actual data]
 
-**Interactions:** [what toggles/tabs exist, what changes when you use them]
+**Interactions:** [what the DiveControlBar exposes, what changes when you toggle]
 
 **Data quality notes:**
 - [specific issue with evidence, or "None found"]
+
+**Methodology:** [1-line summary — inspect the dive component for where methodology content lives; report "missing" if not surfaced]
+**Verify:** [count of rows in `soria_duckdb_main.main.verifications` WHERE model = '{marts_model}', or "missing" if 0]
 
 **Verdict:** [1-2 sentences — what's strong, what's weak, usable or not?]
 ```
@@ -64,70 +90,123 @@ Every dashboard preview follows this structure, in this order:
 
 ## Workflow
 
-### 1. Enumerate (if no dashboard named)
+### 1. Enumerate (if no dive named)
 
-```
-list_dashboard_pages()
-```
+Walk the dives directory:
 
-Present a numbered list, ask: "Which to preview? All, or specific ones?"
-
-### 2. Read config
-
-```
-get_dashboard_page(node_id="...")
+```bash
+ls frontend/src/dives/*.tsx 2>/dev/null
+ls frontend/src/dives/manifests/*.manifest.ts 2>/dev/null
 ```
 
-Extract chart type, controls, grain, and default filters from the `@dashboard`
-block. **Do not query yet** — present the Controls table first.
+Present a numbered list. Ask: "Which to preview? All, or specific ones?"
 
-### 3. Query and render
+### 2. Read the manifest
 
-`warehouse_query(SQL)` against the platinum table. ~30 rows for the default
-view. Format as a pivot table matching how the dashboard displays it — not a
-raw row dump.
+```bash
+cat frontend/src/dives/manifests/{dive-id}.manifest.ts
+```
 
-**Default view first.** Then 1-2 slices that exercise the controls (e.g.,
-regional breakdown, different metric, top-N filter).
+Extract `table`, `columns`, `where`, `filters`, `groupBy`. Present the Controls
+table before running any query.
+
+### 3. Build SQL from the manifest
+
+The manifest is the contract. Build SQL exactly how `useDiveData` would:
 
 ```sql
--- Example: last 6 months, top 10 orgs
-SELECT parent_organization, reporting_month, enrollment
-FROM platinum.ma_enrollment_dashboard
-WHERE segment = 'MA'
-  AND reporting_month >= (SELECT MAX(reporting_month)
-    FROM platinum.ma_enrollment_dashboard) - INTERVAL 5 MONTH
-ORDER BY reporting_month, enrollment DESC
+SELECT {columns joined with comma}
+FROM {table}
+WHERE {where clause}
+  AND {filter_column_1} = '{default_value_1}'
+  AND {filter_column_2} = '{default_value_2}'
+  [GROUP BY {groupBy}]
+ORDER BY [primary time/entity column]
 LIMIT 50
 ```
 
-Time-series → time as columns. Single snapshot → entities as rows.
+### 4. Query and render
 
-### 4. Verdict
+```bash
+soria warehouse query "{built SQL}"
+```
+
+Format as a pivot table matching how the dive displays it — not a raw row
+dump. Time-series → time as columns. Single snapshot → entities as rows.
+
+### 5. Render alternate slices
+
+After the default view, render 1-2 slices that exercise the manifest filters:
+
+```bash
+# Example: swap segment filter
+soria warehouse query "SELECT ... WHERE segment = 'PDP' ORDER BY ... LIMIT 50"
+```
+
+### 6. Check methodology surface + verify check count
+
+```bash
+# Methodology — the pattern varies; check the dive component for how it's wired
+grep -l "methodology\|Methodology" frontend/src/dives/{dive-id}.tsx 2>/dev/null
+
+# Verify check count for this dive's marts model
+soria warehouse query "
+SELECT COUNT(*) FROM soria_duckdb_main.main.verifications
+WHERE model = '{marts_model_name}'
+"
+```
+
+Missing methodology surface or zero verify checks is a shipping blocker
+(Principle #28, #29). Flag in the verdict section.
+
+### 7. Verdict
 
 Look at the actual values before writing the verdict. Flag: unusual NULLs,
 suspiciously round values, wrong ranges, time coverage gaps. **Never say
 "looks good" without evidence.**
 
-### 5. Stop. Wait.
+### 8. Stop. Wait.
 
-One dashboard at a time. After rendering, stop and offer:
+One dive at a time. After rendering, stop and offer:
 
 ```
-Options: show a different slice | go to next dashboard | /verify a value
+Options: show a different slice | go to next dive | /verify a value | /smoke in browser
 ```
 
-If the user requests a specific filter ("show me Northeast only"), re-query
-and re-render.
+If the user requests a specific filter ("show me PDP only"), re-query and re-render.
+
+---
+
+## Handling manifest/data drift
+
+If the SQL fails with a "column does not exist" error or a filter value
+returns 0 rows, the manifest is out of sync with the data. Don't fix it
+here — preview is read-only. Report the drift and suggest `/dive` to
+update the manifest or `/ingest` to fix the upstream data:
+
+```
+⚠️  Manifest/data drift detected
+
+The manifest filter `segment` includes value "Dual" but the marts table
+has no rows where segment = 'Dual'. This will render as an empty pivot.
+
+Fix via /dive (update the manifest) or /ingest (if the upstream should
+include 'Dual' rows).
+```
 
 ---
 
 ## Anti-Patterns
 
 - **Raw row dumps** — format as pivot tables, not `SELECT * LIMIT 50`
-- **Arbitrary slices** — start with the default view, then exercise the controls
+- **Arbitrary slices** — start with the default manifest view, then exercise
+  filters
 - **"Looks good" without evidence** — check the numbers first
-- **Auto-advancing** — one dashboard at a time, always stop after each
+- **Auto-advancing** — one dive at a time, always stop after each
 - **Skipping the controls table** — show it before the first data slice
-- **Wrong schema** — if a model artifact exists with `workspace="ws_xxx"`,
-  query `platinum__ws_xxx.table`, not `platinum.table`
+- **Guessing SQL** — always derive SQL from the manifest file, not from
+  assumptions about the dive
+- **Ignoring missing methodology/verify meta** — a dive without those is
+  incomplete; flag it in the verdict
+- **Writing to the warehouse** — this skill is read-only. No `soria warehouse
+  publish`, no `dbt run`, no manifest edits. Report drift, don't fix it.

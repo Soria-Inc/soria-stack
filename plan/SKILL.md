@@ -1,25 +1,22 @@
 ---
 name: plan
-version: 1.0.0
+version: 2.0.0
 description: |
   ETVLR orchestrator — breaks any data task into phases, plans verification
-  upfront, asks clarifying questions before building. Absorbs source recon
-  from the former /scout skill.
-  Use when asked "come up with a plan", "what should we do", "how should we
-  approach this", "let's work on [X]", or after /status reveals gaps.
+  upfront, asks clarifying questions before building. R phase targets a
+  dive (dbt marts + manifest + TSX + DivesPage registration + verify seed
+  rows + methodology content) — not a legacy dashboard.
+  Use when asked "come up with a plan", "what should we do", "how should
+  we approach this", "let's work on [X]", or after /status reveals gaps.
   Proactively invoke this skill (do NOT start building ad-hoc) when the user
-  describes a data goal without specifying steps or when planning is needed.
-  Use after /status, before /ingest or /dashboard. (soria-stack)
+  describes a data goal without specifying steps.
+  Use after /status, before /ingest or /dive. (soria-stack)
 benefits-from: [status]
 allowed-tools:
-  - sumo_*
-  - exa_*
-  - pplx_*
-  - mcp__perplexity__*
-  - mcp__exa__*
-  - web_fetch
   - Read
   - Bash
+  - WebFetch
+  - WebSearch
   - AskUserQuestion
 ---
 
@@ -29,58 +26,61 @@ allowed-tools:
 mkdir -p ~/.soria-stack/artifacts
 echo "SKILL: plan"
 echo "---"
+echo "Active environment:"
+soria env status 2>&1 || echo "  (soria CLI not authed — run /env first)"
+echo "---"
 echo "Checking for status artifacts..."
 ls -t ~/.soria-stack/artifacts/status-*.md 2>/dev/null | head -3
 echo "Checking for prior plan artifacts..."
 ls -t ~/.soria-stack/artifacts/plan-*.md 2>/dev/null | head -3
 ```
 
-Read `ETHOS.md` from this skill pack. Key principles: #1, #21, #22, #23, #24, #25, #26.
+Read `ETHOS.md`. Key principles: #1, #21, #22, #23, #24, #25, #26, #28, #29.
 
-**Check for /status output:** If a status artifact exists, read it — it has the
-inventory of what exists. **If no status artifact exists, STOP and invoke /status
-first.** Do NOT proceed with planning without a status report. Do NOT do ad-hoc
-inventory queries as a substitute — invoke the actual /status skill so it
-produces a proper artifact that this skill can consume.
+**Check for /status output:** If a status artifact exists, read it — it has
+the inventory of what exists. **If no status artifact exists, STOP and
+invoke /status first.** Do NOT proceed with planning without a status
+report. Do NOT do ad-hoc inventory queries as a substitute — invoke the
+actual /status skill so it produces a proper artifact that this skill can
+consume.
 
 ## Skill routing (always active)
 
-When the user's intent shifts mid-conversation, invoke the matching skill —
-do NOT continue ad-hoc:
+When the user's intent shifts mid-conversation, invoke the matching skill:
 
 - User wants to see what exists before planning → invoke `/status` (prerequisite)
 - User approves the plan and wants to start building → invoke `/ingest`
 - User wants to jump to value mapping → invoke `/map`
-- User wants to jump to SQL models → invoke `/dashboard`
+- User wants to jump to the dive build → invoke `/dive`
 - User wants to verify something → invoke `/verify`
 - User wants news pipeline work → invoke `/newsroom`
 
 **After /plan completes, suggest the first skill in the sequencing** (usually
-`/ingest` or `/dashboard` depending on what the plan says).
+`/ingest` or `/dive` depending on what the plan says).
 
 ---
 
 # /plan — "What are we building and how?"
 
-You are a planning orchestrator. Your job is to turn a vague directive ("let's
-work on NAIC data", "build the exchange premium dashboard") into a concrete,
-phased work plan with verification criteria for each phase.
+You are a planning orchestrator. Your job is to turn a vague directive
+("let's work on NAIC data", "build the exchange premium dive") into a
+concrete, phased work plan with verification criteria for each phase.
 
-**You spend 80% of the time here.** The building is the easy part. Getting the
-plan right prevents wasting hours on the wrong approach.
+**You spend 80% of the time here.** The building is the easy part. Getting
+the plan right prevents wasting hours on the wrong approach.
 
 ---
 
 ## Phase 1: Clarify the Goal
 
-Before planning anything, ask the questions that determine everything downstream.
-Use `AskUserQuestion` for anything genuinely ambiguous.
+Before planning anything, ask the questions that determine everything
+downstream. Use `AskUserQuestion` for anything genuinely ambiguous.
 
 ### Required questions (ask if not already answered):
 
-1. **What's the end product?** Dashboard? Warehouse table? One-time analysis?
+1. **What's the end product?** A dive? A warehouse table? A one-time analysis?
    Ad-hoc exploration?
-2. **Who's the audience?** Internal team, customer dashboard, equity analyst,
+2. **Who's the audience?** Internal team, customer-facing, equity analyst,
    Adam exploring?
 3. **What's the scope?** One scraper? A whole domain? Multiple sources joined?
 4. **What's the priority?** Get something working fast (Tier 1 sources first)?
@@ -88,17 +88,17 @@ Use `AskUserQuestion` for anything genuinely ambiguous.
 
 ### Don't ask if obvious from context
 
-If the user said "build the Kaufman Hall dashboard", you know the end product
-(dashboard), the source (Kaufman Hall), and the audience (customer). Don't ask
+If the user said "build the Kaufman Hall dive", you know the end product
+(dive), the source (Kaufman Hall), and the audience (customer). Don't ask
 what you already know. Only ask what's genuinely ambiguous.
 
 ### The Simplicity Challenge
 
 Before accepting the scope, push back:
-- "You asked for dashboards across 12 scrapers. Can we start with the 3 that
+- "You asked for dives across 12 scrapers. Can we start with the 3 that
   are closest to done and deliver value this week?"
-- "This requires joining 4 sources. Have we verified they share a common key?
-  Can we answer 80% of the question with just 1 source?"
+- "This requires joining 4 sources. Have we verified they share a common
+  key? Can we answer 80% of the question with just 1 source?"
 
 Take a position. The plan should be opinionated about what to do first.
 
@@ -107,37 +107,27 @@ Take a position. The plan should be opinionated about what to do first.
 ## Phase 2: Source Recon (if needed)
 
 If the data source is new or unfamiliar, do source recon before planning the
-pipeline. This is the former /scout Mode 1.
+pipeline.
 
-### External research (Perplexity/Exa)
+### External research (WebSearch / WebFetch)
 
-Before designing the pipeline, search for how this data source is used in the
-real world:
+Before designing the pipeline, search for how this data source is used in
+the real world:
 - "How do healthcare analysts use [this dataset]?"
 - "What's the standard schema for [this CMS data]?"
 - "Known issues or quirks with [this data source]?"
 
-### Earnings transcript grounding
+### Prior-session grounding
 
-Search earnings call transcripts for how the data domain you're working on
-actually impacts companies and how analysts think about it. This is NOT
-"search for the company" — it's "search for the data topic across companies."
+Search prior Claude sessions and earnings transcripts for context:
 
-Examples:
-- Working on **hospital utilization data** → search transcripts for "utilization
-  trends inpatient outpatient" to find which companies discuss it, what metrics
-  they track (adjusted discharges per calendar day, ED visits, length of stay),
-  and what drives analyst questions ("is the outpatient trend sustainable?")
-- Working on **Medicare Advantage enrollment** → search for "MA membership
-  growth market share competitive" to understand what dimensions analysts care
-  about (plan type, geography, star rating impact, new vs retained members)
-- Working on **medical cost trends** → search for "medical cost trend MLR
-  benefit expense" to see how companies frame cost pressure and what baseline
-  comparisons analysts expect (pre-COVID baselines, YoY trend)
+```
+mcp__openclaw__mempalace_search: query="{domain topic}", wing="earnings"
+mcp__openclaw__mempalace_search: query="{domain topic} pipeline", wing="claude-code"
+```
 
-This tells you: what to prioritize scraping, what grain the dashboard needs,
-and what comparisons analysts will actually want. Use `search_context` with
-`source: "transcripts"` and relevant domain keywords (not company names).
+This tells you: what analysts care about, what metrics drive dashboards, and
+what pitfalls other sessions hit.
 
 ### Source characterization
 
@@ -159,13 +149,32 @@ For each new source:
 Break the work into phases. For each phase, state:
 - What needs to happen
 - Current status (from /status output)
-- Estimated effort
+- Estimated effort (t-shirt size)
 - Verification criteria (what proves this phase is done)
+
+### The R phase always targets a dive
+
+There are no classic dashboards anymore. The R phase always includes:
+
+- **dbt marts model** — `frontend/src/dives/dbt/models/marts/{domain}/{model}.sql`
+- **Manifest** — `frontend/src/dives/manifests/{dive-id}.manifest.ts`
+- **TSX component** — `frontend/src/dives/{dive-id}.tsx`
+- **DivesPage registration** — entry in `frontend/src/pages/DivesPage.tsx`
+- **Verify check rows** — ~15–20 rows added to the shared
+  `frontend/src/dives/dbt/seeds/verifications.csv` with `model = {marts_model}`
+- **Methodology content** — wired into the dive component following the
+  convention of existing dives (see `/dive` for details)
+
+Never plan an R phase that says "build a dashboard" — it's always a dive,
+and the plan should enumerate all six things above.
 
 ### Plan template
 
 ```
 ## Plan: [Project Name]
+
+### Environment
+[Where this work will happen — dev env name, or "create a new env"]
 
 ### Goal
 [One sentence: what question this answers, for whom]
@@ -178,7 +187,7 @@ Break the work into phases. For each phase, state:
 | T (Transform) | [status] | [specific action] | [S/M/L/XL] | [criteria] |
 | V (Value Map) | [status] | [specific action] | [S/M/L/XL] | [criteria] |
 | L (Load) | [status] | [specific action] | [S/M/L/XL] | [criteria] |
-| R (Represent) | [status] | [specific action] | [S/M/L/XL] | [criteria] |
+| R (Represent — dive) | [status] | dbt marts + manifest + TSX + modals + registration + semantic checks | [S/M/L/XL] | [criteria] |
 
 ### Verification Plan (before we start)
 
@@ -187,8 +196,8 @@ Break the work into phases. For each phase, state:
 | E | [e.g., "50 states have filings, file types are PDF/XLSX, 2020-2025"] |
 | T | [e.g., "extractor runs on 3 sample files, 10 spot-check values match"] |
 | V | [e.g., "all state codes resolve, <5% orphan values"] |
-| L | [e.g., "row count matches expectations, no NULL PKs, materialized"] |
-| R | [e.g., "grain = one row per X per Y, market share sums to ~100%"] |
+| L | [e.g., "row count matches expectations, no NULL PKs, bronze materialized"] |
+| R | [e.g., "grain = one row per X per Y, market share sums to ~100%, both modals populated, dbt test passes, /smoke passes dual-mode load"] |
 
 ### Sequencing
 [What to do first, what can be parallelized, what blocks what]
@@ -228,10 +237,12 @@ For each cross-source join, state what it means in business terms:
 
 ### Model stack proposal
 
-- Bronze: one per warehouse table (list them)
-- Silver: one per bronze (list transforms)
-- Gold: what joins, what grain
-- Platinum: what dashboard pages, what page controls
+- Upstream bronze/silver/gold: one per warehouse table (list them, note
+  whether they're already built)
+- dbt staging (dive project): optional, pre-processing
+- dbt intermediate (dive project): joins across staging
+- dbt marts (dive project): one per dive, the dashboard-ready output
+- dbt semantic (dive project): one per dive, the checks
 
 ---
 
@@ -246,8 +257,8 @@ are smaller than they look.
 | Size | What it means | Typical work |
 |------|--------------|--------------|
 | **S** | One-shot. Single skill invocation. | Clean CSV: scrape → schema map → publish. One SQL model fix. |
-| **M** | A few steps. Might need one human decision. | PDF extraction with known schema. Silver + gold model for one source. |
-| **L** | Multi-step with decisions. Several skill invocations. | New source with format drift across eras. Multi-source gold model. |
+| **M** | A few steps. Might need one human decision. | PDF extraction with known schema. Marts + manifest + TSX for one source. |
+| **L** | Multi-step with decisions. Several skill invocations. | New source with format drift across eras. Multi-source marts with parent-map. |
 | **XL** | Multi-session. Architecture decisions needed. | New domain from scratch. Cross-source joins with temporal alignment. |
 
 **Mapping from complexity tiers:**
@@ -269,12 +280,12 @@ don't pretend it's routine.
 
 ### Sequencing rules
 
-1. **Closest to done first.** If a scraper has files + groups + schema and just
-   needs extraction, do that before starting a new scraper from scratch.
+1. **Closest to done first.** If a scraper has files + groups + schema and
+   just needs extraction, do that before starting a new scraper from scratch.
 2. **Quick wins unlock value.** Tier 1 sources (clean CSVs) can be live in
-   15 minutes. Do them first.
-3. **Dependencies before dependents.** If the gold model needs enrollment AND
-   premiums, ingest both before building gold.
+   one short session. Do them first.
+3. **Dependencies before dependents.** If the dive needs enrollment AND
+   premiums, ingest both before building the marts model.
 4. **Parallelize independent work.** If 3 scrapers are independent, they can
    run as parallel /ingest sessions.
 
@@ -320,6 +331,9 @@ Expect pushback on:
 cat > ~/.soria-stack/artifacts/plan-$(date +%Y%m%d-%H%M%S).md << 'ARTIFACT'
 # Plan: [Project Name]
 
+## Environment
+[Where this will happen]
+
 ## Goal
 [What we're building, for whom]
 
@@ -343,7 +357,7 @@ Status: [DONE | DONE_WITH_CONCERNS | BLOCKED | NEEDS_CONTEXT]
 ARTIFACT
 ```
 
-This artifact is consumed by /ingest, /map, /dashboard, and /verify.
+This artifact is consumed by /ingest, /map, /dive, /verify, and /promote.
 
 ---
 
@@ -352,7 +366,7 @@ This artifact is consumed by /ingest, /map, /dashboard, and /verify.
 1. **Planning without inventory.** If you haven't run /status (or at least
    queried what exists), your plan is based on assumptions. Check first.
 
-2. **Accepting scope without pushback.** "Build dashboards for all 73 scrapers"
+2. **Accepting scope without pushback.** "Build dives for all 73 scrapers"
    is not a plan. "Start with the 6 that are closest to done, deliver value
    this week, then expand" is a plan.
 
@@ -365,9 +379,14 @@ This artifact is consumed by /ingest, /map, /dashboard, and /verify.
 
 5. **Over-planning.** A Tier 1 source (clean CSV) doesn't need 5 phases of
    planning. Check the file, confirm it's clean, go straight to /ingest.
-   Don't ceremony what doesn't need ceremony.
 
-6. **Giving time estimates.** Never say "this will take 3 hours" or "~45 minutes
-   per source." Use t-shirt sizes (S/M/L/XL). The AI consistently inflates
-   estimates for data pipeline work — most things are one-shot or a few steps.
-   Just size it and do it.
+6. **Giving time estimates.** Never say "this will take 3 hours" or
+   "~45 minutes per source." Use t-shirt sizes (S/M/L/XL).
+
+7. **Planning an R phase without all 7 dive artifacts.** The dive isn't
+   "just the SQL". The R phase plan must enumerate dbt marts + manifest +
+   TSX + methodology meta + verify meta + DivesPage registration + semantic
+   checks.
+
+8. **Planning against the wrong env.** All phases happen in a specific dev
+   env. If one isn't set, the plan should say "create env first via /env".
