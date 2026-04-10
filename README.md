@@ -83,6 +83,8 @@ Read `ETHOS.md` before any data pipeline work. Includes:
 
 ## Installation
 
+### 1. Install the `soria` CLI
+
 This skill pack assumes the [`soria` CLI](https://github.com/Soria-Inc/soria-2/tree/main/cli)
 is installed. From the soria-2 repo root:
 
@@ -94,6 +96,44 @@ source ~/.zshrc
 ```
 
 Verify with `soria --help` and `soria env list`.
+
+### 2. Install the skill pack
+
+Clone this repo into Claude Code's skills directory, then run the installer
+to symlink every skill into the parent dir so Claude Code discovers them:
+
+```bash
+git clone https://github.com/Soria-Inc/soria-stack ~/.claude/skills/soria-stack
+cd ~/.claude/skills/soria-stack
+./install.sh
+```
+
+The installer creates symlinks like `~/.claude/skills/ingest -> soria-stack/ingest`
+for every skill in the pack. It's idempotent — rerun it any time after
+`git pull` to pick up new skills, remove stale symlinks pointing at deleted
+skills, or repoint symlinks whose targets have moved.
+
+After running, verify in a fresh Claude Code session:
+
+```
+/env      # list dev environments
+/tools    # verify CLI + active env
+/status   # pipeline recon
+```
+
+### 3. Keeping the pack up to date
+
+```bash
+cd ~/.claude/skills/soria-stack
+git pull
+./install.sh   # propagate any new/removed skills
+```
+
+Most updates (to existing skills) propagate automatically because the
+top-level symlinks point into the pack — a `git pull` rewrites the content
+the symlinks resolve to. Re-running `install.sh` is only strictly necessary
+when skills are added or removed, but running it every time is cheap and
+safe.
 
 ## Skill chaining (ETVLR)
 
