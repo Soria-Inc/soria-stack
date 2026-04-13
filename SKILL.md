@@ -11,7 +11,7 @@ description: |
   /status (what exists), /plan (ETVLR orchestrator), /ingest (scrape + extract
   + publish), /map (value mapping), /parent-map (centralized parent company
   resolution), /dive (build a dive end-to-end), /preview (render a dive in
-  chat), /verify (prove data correct), /smoke (adversarial browser QA),
+  chat), /verify (prove data correct), /dashboard-review (adversarial browser QA),
   /diagnose (failure triage), /ticket (file structured tickets mid-session),
   /promote (git push → PR → CI), /newsroom (news pipeline ops),
   /lessons (retrospective).
@@ -19,7 +19,7 @@ description: |
   investigating what exists → /status; planning work → /plan; building a
   pipeline → /ingest; normalizing values → /map; resolving parent companies
   → /parent-map; building a dive or reviewing its SQL → /dive; proving data
-  correct → /verify; testing live dive UI → /smoke; something broke →
+  correct → /verify; testing live dive UI → /dashboard-review; something broke →
   /diagnose; filing a bug/feature ticket → /ticket; promoting to prod →
   /promote; news pipeline → /newsroom; reviewing recent work → /lessons.
 allowed-tools:
@@ -71,7 +71,7 @@ MCP tools.
 | Resolving company names to parent companies | `/parent-map` |
 | Building a dive, writing dbt SQL, or reviewing a dive | `/dive` |
 | Checking if data is correct, proving it | `/verify` |
-| Testing a live dive in a browser | `/smoke` |
+| Testing a live dive in a browser | `/dashboard-review` |
 | Wanting to see a dive rendered in chat | `/preview` |
 | Something broke or isn't working | `/diagnose` |
 | Hit a bug, need to file a ticket | `/ticket` |
@@ -91,7 +91,7 @@ MCP tools.
                    /parent-map      (verify rows live in
                    (parallel to /map) the shared seed,
                                      authored inside /dive)
-   + /smoke (browser QA — after dive deploys)
+   + /dashboard-review (browser QA — after dive deploys)
    + /preview (render dive output in chat — any time)
    + /diagnose (enters from any phase when something breaks)
    + /ticket (side-quest — file a bug/feature ticket from any phase)

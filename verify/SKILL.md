@@ -50,7 +50,7 @@ too for table names and schemas.
 - Verification reveals unmapped values → invoke `/map`
 - Verification reveals SQL issues → invoke `/dive`
 - Semantic checks don't exist for this domain → invoke `/dive` to build them
-- User wants to test the live dive in a browser → invoke `/smoke`
+- User wants to test the live dive in a browser → invoke `/dashboard-review`
 - User wants to check pipeline status → invoke `/status`
 
 **After /verify completes, suggest `/lessons`** if this was the end of a

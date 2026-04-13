@@ -87,4 +87,23 @@ done
 
 echo ""
 echo "Summary: $created created, $updated updated, $removed removed, $skipped skipped"
+
+# Phase 3: build the /browse skill's vendored binary if needed.
+# The browse binary is a compiled Bun CLI (src lives in browse/vendor/).
+# It's idempotent — skips the build if dist/browse is newer than src/.
+if [ -x "$SCRIPT_DIR/browse/build.sh" ]; then
+  browse_bin="$SCRIPT_DIR/browse/vendor/dist/browse"
+  src_newest="$(find "$SCRIPT_DIR/browse/vendor/src" -type f -newer "$browse_bin" 2>/dev/null | head -1 || true)"
+  if [ ! -x "$browse_bin" ] || [ -n "$src_newest" ]; then
+    echo ""
+    echo "Building /browse binary (bun + playwright)..."
+    if "$SCRIPT_DIR/browse/build.sh"; then
+      echo "  built: $browse_bin"
+    else
+      echo "  WARNING: /browse build failed. /browse skill will not work until built." >&2
+      echo "  Fix and re-run: $SCRIPT_DIR/browse/build.sh" >&2
+    fi
+  fi
+fi
+
 echo "Done."

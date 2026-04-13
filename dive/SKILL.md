@@ -74,7 +74,7 @@ do NOT continue ad-hoc:
 - User wants to fix value mappings → invoke `/map`
 - User says "verify this", "spot check", "is this correct" → invoke `/verify`
 - User wants to see the dive rendered in chat → invoke `/preview`
-- User wants to test the dive in a browser → invoke `/smoke`
+- User wants to test the dive in a browser → invoke `/dashboard-review`
 - User says "push to prod" → invoke `/promote`
 
 **After /dive completes, suggest `/verify`** (Model Verify + Semantic Verify)

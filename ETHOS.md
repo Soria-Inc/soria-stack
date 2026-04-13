@@ -316,7 +316,7 @@ reversal — use it.
 ### 35. Don't race the interactive agent
 The Modal sandbox interactive agent verifies PRs, replies to comments, and
 posts investigations to Linear. Skills that operate on open PRs (`/promote`,
-`/smoke`) must check for active agent runs and defer to them. Don't
+`/dashboard-review`) must check for active agent runs and defer to them. Don't
 duplicate work the agent is already doing. Don't comment on PRs the agent is
 handling. If your skill sees a stuck agent run, surface it in the report —
 don't try to fix it.

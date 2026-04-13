@@ -170,7 +170,7 @@ suspiciously round values, wrong ranges, time coverage gaps. **Never say
 One dive at a time. After rendering, stop and offer:
 
 ```
-Options: show a different slice | go to next dive | /verify a value | /smoke in browser
+Options: show a different slice | go to next dive | /verify a value | /dashboard-review in browser
 ```
 
 If the user requests a specific filter ("show me PDP only"), re-query and re-render.

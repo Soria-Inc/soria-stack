@@ -5,14 +5,14 @@ description: |
   Safe path to production. There is no `soria promote` command — promotion
   flows through git + CI. This skill orchestrates the pre-flight checks,
   reviews `soria env diff`, creates the PR via `gh`, waits for CI, and
-  runs canary checks via /smoke. Documents `soria revert` as the rollback
+  runs canary checks via /dashboard-review. Documents `soria revert` as the rollback
   safety net.
   REQUIRES EXPLICIT HUMAN APPROVAL before creating the PR.
   Use when asked to "promote", "push to prod", "deploy this", "make it live".
   Do NOT proactively suggest promotion — wait for the human to ask.
   Do NOT promote just because a pipeline is "done" — done in a dev env is
   not done in prod. The human decides when to promote. (soria-stack)
-benefits-from: [verify, smoke]
+benefits-from: [verify, dashboard-review]
 allowed-tools:
   - Read
   - Bash
@@ -52,7 +52,7 @@ If the user's intent shifts away from promotion, invoke the right skill:
 
 - User wants to fix something before promoting → invoke `/ingest`, `/map`, or `/dive`
 - User wants to verify before promoting → invoke `/verify`
-- User wants to test the dive in a browser → invoke `/smoke`
+- User wants to test the dive in a browser → invoke `/dashboard-review`
 - User wants to check what exists → invoke `/status`
 
 **CRITICAL: Do NOT promote anything without this skill.** If you're in another
@@ -83,7 +83,7 @@ There is no `soria promote` command. Promotion is:
 4. gh pr create                  (open the PR with summary)
 5. Human approval on the PR      (required)
 6. Merge                         (CI runs dbt run --target prod + frontend deploy)
-7. Canary via /smoke             (verify on live prod)
+7. Canary via /dashboard-review             (verify on live prod)
 8. (if broken) soria revert      (Principle #34 — the safety net)
 ```
 
@@ -144,13 +144,13 @@ Proceed anyway? [requires explicit "yes"]
 If a verify artifact exists, show the confidence level, semantic check
 pass rate, and any caveats.
 
-### 4. Has it been smoke-tested?
+### 4. Has it been reviewed?
 
 ```bash
-ls -t ~/.soria-stack/artifacts/smoke-*.md 2>/dev/null | head -3
+ls -t ~/.soria-stack/artifacts/dashboard-review-*.md 2>/dev/null | head -3
 ```
 
-For dive promotions, `/smoke` should have run against the dev env URL and
+For dive promotions, `/dashboard-review` should have run against the dev env URL and
 confirmed:
 - Dual-mode load works (Phase 1 + Phase 2)
 - Every filter responds correctly
@@ -158,11 +158,11 @@ confirmed:
 - Data matches the warehouse
 - Admin vs customer view split respects ENG-1559
 
-If no smoke artifact:
+If no dashboard-review artifact:
 ```
-⚠️  NO SMOKE TEST ARTIFACT FOUND
+⚠️  NO dashboard review ARTIFACT FOUND
 
-Recommend running /smoke before promoting a dive.
+Recommend running /dashboard-review before promoting a dive.
 
 Proceed anyway? [requires explicit "yes"]
 ```
@@ -289,7 +289,7 @@ Data changes:
           verifications seed — +18 rows for medicaid_states model
 
 Verification: PASSED (verify-2026-04-10 — HIGH confidence, 96% checks within bounds)
-Smoke:        PASSED (smoke-2026-04-10 — dual-mode load OK, methodology + verify panels populated)
+Review:        PASSED (dashboard-review-2026-04-10 — dual-mode load OK, methodology + verify panels populated)
 dbt tests:    47/47 pass
 Methodology:  ✅ wired into DivePageHeader for both changed dives
 Verify rows:  ✅ 18 medicaid_states checks, 24 ma_enrollment checks
@@ -300,7 +300,7 @@ Diff mode:    Net new (no deletions)
   1. Open a PR via `gh pr create`
   2. Human must merge the PR manually
   3. CI runs `dbt run --target prod` + frontend deploy on merge
-  4. Canary via /smoke on the live prod URL
+  4. Canary via /dashboard-review on the live prod URL
   5. If broken, `soria revert` is the rollback
 
 Proceed with opening the PR? [requires explicit approval: "yes", "open it", "go ahead"]
@@ -341,7 +341,7 @@ gh pr create --title "promote: {short description}" --body "$(cat <<'EOF'
 ## Verification
 
 - /verify: HIGH confidence, {N}/{M} verify checks within bounds
-- /smoke: dual-mode load OK, methodology + verify panels surfaced
+- /dashboard-review: dual-mode load OK, methodology + verify panels surfaced
 - dbt test: {X}/{Y} pass
 - Verify check rows: {N} per changed marts model
 
@@ -376,16 +376,16 @@ Next steps (human):
   1. Review the PR
   2. Merge when ready
   3. CI will run `dbt run --target prod` + frontend deploy
-  4. After CI green, invoke /smoke with --env=prod for canary
+  4. After CI green, invoke /dashboard-review with --env=prod for canary
 
 If the canary fails: `soria revert` — do NOT manually undo.
 
 Status: DONE (PR opened, human owns merge)
 ```
 
-### Step 4 (after merge): Canary via /smoke
+### Step 4 (after merge): Canary via /dashboard-review
 
-Once the user reports the PR is merged, invoke `/smoke` against the prod
+Once the user reports the PR is merged, invoke `/dashboard-review` against the prod
 URL to confirm everything landed correctly. This is the final gate.
 
 If the canary fails, report the failure and suggest `soria revert` — do not
@@ -445,7 +445,7 @@ To: prod
 
 ## Pre-flight checklist
 - Verification: [PASSED / NOT VERIFIED / PASSED WITH CONCERNS]
-- Smoke: [PASSED / NOT RUN]
+- Review: [PASSED / NOT RUN]
 - dbt tests: [N/M pass]
 - Modals: [populated / missing for X]
 - Agent runs: [none / active on PR #Y]
@@ -455,7 +455,7 @@ To: prod
 URL: [https://github.com/.../pull/N]
 
 ## Canary
-[After merge — /smoke results against prod URL]
+[After merge — /dashboard-review results against prod URL]
 
 ## Outcome
 Status: [DONE | DONE_WITH_CONCERNS | BLOCKED]
@@ -477,7 +477,7 @@ ARTIFACT
 3. **Promoting without verification.** If /verify hasn't run, warn loudly.
    Don't just promote because the pipeline "looks done."
 
-4. **Promoting without a smoke test.** For dives, /smoke is the only way to
+4. **Promoting without a dashboard review.** For dives, /dashboard-review is the only way to
    confirm the dual-mode load, modals, and filter behavior work in a real
    browser. Don't skip it.
 
@@ -490,7 +490,7 @@ ARTIFACT
    competing PR.
 
 7. **Assuming merged = done.** CI runs after merge. Only after CI green
-   AND /smoke canary pass against prod URL is the promotion truly done.
+   AND /dashboard-review canary pass against prod URL is the promotion truly done.
 
 8. **Silent deletions.** Diff-based promotion (#32) only deletes rows that
    were explicitly deleted in the env. "Not including a row" does not

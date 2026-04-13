@@ -1,0 +1,9 @@
+# Build artifacts for /browse (rebuilt by install.sh on clone)
+browse/vendor/node_modules/
+browse/vendor/dist/
+browse/vendor/.*.bun-build
+browse/vendor/.version
+
+# Skill runtime state
+.gstack/
+.claude/

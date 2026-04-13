@@ -197,7 +197,7 @@ and the plan should enumerate all six things above.
 | T | [e.g., "extractor runs on 3 sample files, 10 spot-check values match"] |
 | V | [e.g., "all state codes resolve, <5% orphan values"] |
 | L | [e.g., "row count matches expectations, no NULL PKs, bronze materialized"] |
-| R | [e.g., "grain = one row per X per Y, market share sums to ~100%, both modals populated, dbt test passes, /smoke passes dual-mode load"] |
+| R | [e.g., "grain = one row per X per Y, market share sums to ~100%, both modals populated, dbt test passes, /dashboard-review passes dual-mode load"] |
 
 ### Sequencing
 [What to do first, what can be parallelized, what blocks what]

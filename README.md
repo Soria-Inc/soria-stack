@@ -51,6 +51,7 @@ Skills live in their own directories. Invoke them by name (e.g., `/status`).
 
 | Skill | What it does |
 |-------|-------------|
+| `/browse` | Persistent headless Chromium (`$B`) for dive verification, bug repro, scraper recon. Vendored from gstack (MIT). `/dashboard-review` and `/review` call this under the hood. |
 | `/env` | Manage dev environments — `soria env list/branch/checkout/status/diff/teardown/restore`. Run first in every session. |
 | `/tools` | Verify `soria` CLI installed, report active environment, warn on prod. |
 | `/status` | Investigate what exists for a concept — pipeline inventory via `soria env status` + `soria list` + dive filesystem walk. |
@@ -61,7 +62,7 @@ Skills live in their own directories. Invoke them by name (e.g., `/status`).
 | `/dive` | Build a dive end-to-end: dbt marts SQL + manifest + TSX component + `DivesPage.tsx` registration + rows in the shared `verifications.csv` seed + methodology content wired into the component. Grain-first thinking, domain grounding, SQL review checklist. |
 | `/preview` | Render a dive as markdown tables in chat — read the manifest, build SQL, query MotherDuck, format as a pivot. |
 | `/verify` | Prove data is correct. Semantic checks foundation — Pipeline verify, Model verify, Semantic verify. Three tiers per mode. |
-| `/smoke` | Adversarial browser QA — headless browser clicks every dive control, tests MethodologyModal + VerifyModal, handles Clerk login. |
+| `/dashboard-review` | Ship-readiness review for a dive. Runs six gates end-to-end via `/browse`: render (dual-mode contract), data correctness (seed + warehouse cross-ref), interactivity, methodology/verify modals, edge cases, perf. Aggregates into one report; hands off to `/ticket` or `/diagnose` on failure. |
 | `/diagnose` | Triage-first failure investigation: silent failures, data traces, schema mismatches, infrastructure, quality. Invokes `/ticket` when ticketing is needed. |
 | `/ticket` | File a structured Linear ticket mid-session. Owns all Linear writes. Scans for duplicates and active interactive-agent runs before filing. Side-quest — returns the user to their previous skill. |
 | `/promote` | Safe path to production. Pre-flight → `soria env diff` → `git push` → `gh pr create` → CI promotes on merge. Documents `soria revert` rollback. |
@@ -158,7 +159,7 @@ safe.
    ↓
 /lessons → retro report (patterns, principle updates) [periodic]
 
-   + /smoke (browser QA — after dive lands in dev env)
+   + /dashboard-review (browser QA — after dive lands in dev env)
    + /preview (render a dive in chat — any time)
    + /diagnose (enters from any phase when something breaks)
 ```

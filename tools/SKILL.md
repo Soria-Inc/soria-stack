@@ -145,7 +145,7 @@ Do NOT answer directly — invoke the matching skill via the Skill tool:
 - "Build a dive", "build a dashboard", "write the SQL" → invoke `/dive`
 - "Show me the dive", "preview" → invoke `/preview`
 - "Verify", "spot check", "prove it" → invoke `/verify`
-- "Test the UI", "click through it", "browser QA" → invoke `/smoke`
+- "Test the UI", "click through it", "browser QA" → invoke `/dashboard-review`
 - "This isn't working", "it broke", "wrong data" → invoke `/diagnose`
 - "Promote", "push to prod" → invoke `/promote`
 - "News pipeline", "tune prompts" → invoke `/newsroom`
