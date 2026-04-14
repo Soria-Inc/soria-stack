@@ -1,0 +1,42 @@
+{
+  "name": "soria-stack",
+  "version": "0.1.0",
+  "description": "Codex-native Soria workflow guidance plus the fast $B browse flow from Soria-Inc/soria-stack.",
+  "author": {
+    "name": "Soria Analytics",
+    "url": "https://github.com/Soria-Inc"
+  },
+  "homepage": "https://github.com/Soria-Inc/soria-stack",
+  "repository": "https://github.com/Soria-Inc/soria-stack",
+  "license": "MIT",
+  "keywords": [
+    "soria",
+    "soria-stack",
+    "codex",
+    "browser",
+    "dive",
+    "data-pipeline"
+  ],
+  "skills": "./skills/",
+  "mcpServers": "./.mcp.json",
+  "interface": {
+    "displayName": "Soria Stack",
+    "shortDescription": "Soria CLI workflow guidance and fast $B browser QA for Codex",
+    "longDescription": "Brings the Soria CLI workflow and the fast $B browse flow from Soria-Inc/soria-stack into Codex. Use it for Soria environments, pipeline work, dive iteration, verification, and fast browser QA without depending on slower Chrome-first flows.",
+    "developerName": "Soria Analytics",
+    "category": "Coding",
+    "capabilities": [
+      "Interactive",
+      "Read",
+      "Write"
+    ],
+    "websiteURL": "https://github.com/Soria-Inc/soria-stack",
+    "defaultPrompt": [
+      "Use Soria Stack to inspect this env and suggest the next CLI steps",
+      "Use browse to verify this dive and capture evidence quickly",
+      "Help me run the Soria CLI workflow without using Sumo MCP"
+    ],
+    "brandColor": "#0f172a",
+    "screenshots": []
+  }
+}
