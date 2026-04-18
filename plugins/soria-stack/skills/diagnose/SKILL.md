@@ -17,6 +17,12 @@ before acting.
 ## Focus
 
 - triage first, observe before hypothesizing
-- inspect logs, state, schemas, queries, and UI evidence
+- schema discovery via `mcp__soria__database_query` /
+  `mcp__soria__warehouse_query` on `information_schema.columns` before any
+  other query
+- trace failing data through layers: Postgres state → bronze → staging →
+  intermediate → marts
+- use `mcp__soria__pipeline_activity / pipeline_history` as the audit trail
 - use mempalace when available for prior failures or known patterns
-- either fix inline or hand off to `ticket` with a structured disposition
+- either fix inline (flip `deleted_at`, re-run dbt, fix SQL) or hand off to
+  `ticket` with a structured disposition

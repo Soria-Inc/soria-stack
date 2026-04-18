@@ -19,4 +19,5 @@ before acting.
 - review recent artifacts and session evidence
 - use mempalace when available for prior comparable work
 - identify repeat failures, successful patterns, and principle updates
+- surface MCP tool gaps (needed behavior with no `mcp__soria__*` tool)
 - end with concrete lessons, not generic retrospection

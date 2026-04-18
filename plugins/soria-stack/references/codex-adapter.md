@@ -5,9 +5,14 @@ for Codex.
 
 ## Core rules
 
-- Stay CLI-first. The Soria platform is driven through `soria`, not Soria MCP.
-- If the user explicitly asks for Sumo/Soria MCP, switch to the separate
-  `sumo-mcp` skill instead of forcing the CLI path.
+- Stay MCP-first. The Soria platform is driven through the `soria` MCP server
+  (`mcp__soria__*` tools — `scraper_run`, `detection_run`, `extraction_run`,
+  `warehouse_query`, `warehouse_manage`, `database_query`, etc.). There is no
+  `soria` CLI; any wrapper that looks like one is obsolete.
+- Codex doesn't ship the Soria MCP by default. The user must configure it in
+  their Codex client (HTTP endpoint at
+  `https://<your-dbos>.cloud.dbos.dev/mcp/`) before these skills work. If a
+  session lacks Soria MCP, say so and fall back to filesystem reads + git.
 - If the upstream Claude skill mentions `AskUserQuestion`, use normal Codex
   commentary updates and, when necessary, a short direct user question.
 - If the upstream Claude skill mentions browser QA, use the Codex `browse`
@@ -21,12 +26,16 @@ for Codex.
   issue, or produce a ticket draft for the user.
 - Read the current repo's `AGENTS.md` before following write or landing
   workflows. Repo rules take precedence over generic skill text.
-- Respect prod safety. Anything that writes data or promotes changes needs
-  explicit user acknowledgment if the active env is `prod`.
+- Reversibility over isolation. There are no isolated dev environments.
+  MCP writes hit shared Postgres + `soria_duckdb_staging`. Every write is
+  soft-delete reversible via `deleted_at` + the `PipelineEvent` audit trail.
+  Promotion to prod MotherDuck is PR-gated through `.github/workflows/
+  promote.yml` and `dbt-deploy.yml`.
 
 ## Canonical source
 
 When these wrappers are used inside the actual `Soria-Inc/soria-stack` repo,
 the Claude `SKILL.md` files at the repo root remain the most detailed source of
-truth. The Codex wrappers exist to make those workflows discoverable and usable
-inside Codex without assuming Claude-specific tool names.
+truth (along with `ETHOS.md` and `MCP_TOOL_MAP.md`). The Codex wrappers exist
+to make those workflows discoverable and usable inside Codex without assuming
+Claude-specific tool names.

@@ -1,6 +1,6 @@
 ---
 name: map
-description: Value mapping for Codex. Use when raw values need to be normalized to canonical forms across eras and sources, and drive the workflow through `soria value` commands with evidence instead of hand-wavy string matching.
+description: Value mapping in Codex. Use when raw values need to be normalized to canonical forms across eras and sources. Drive through `mcp__soria__value_manage` (index / map / unmap / rename / delete) with evidence, not string matching.
 metadata:
   source_repo: https://github.com/Soria-Inc/soria-stack
   upstream_skill: map/SKILL.md
@@ -16,7 +16,10 @@ before acting.
 
 ## Focus
 
-- `soria value index`, `soria value read`, and mapping updates
-- semantic normalization decisions with concrete evidence
+- `mcp__soria__value_manage(action="read"|"index"|"map"|"unmap"|"rename")`
+- semantic normalization decisions with concrete evidence (typo vs rebrand
+  vs methodology change vs genuinely distinct)
 - mempalace support when available for ticker, company, or domain grounding
+- re-publish bronze with `force=True` after mapping updates so mapped values
+  propagate
 - hand off to `verify` after substantial mapping changes

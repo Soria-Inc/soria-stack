@@ -54,11 +54,19 @@ mkdir -p "$(dirname "$BROWSE_STATE_FILE")"
 
 ## Auth bootstrap
 
-Do not try to log in to Clerk headlessly. Import cookies from a real browser:
+Do not try to log in to Clerk headlessly. Import cookies from a real browser.
+The default Soria dev URL is `https://dev.soriaanalytics.com` (local vite
+pointed at prod DBOS + Clerk via `make dev-https`):
 
 ```bash
-$B goto http://localhost:5173/
-$B cookie-import-browser arc --domain localhost
+$B goto https://dev.soriaanalytics.com/
+$B cookie-import-browser arc --domain dev.soriaanalytics.com
+```
+
+For prod canary or other hosts, swap the domain:
+
+```bash
+$B cookie-import-browser arc --domain soriaanalytics.com
 ```
 
 Verify auth actually stuck:
@@ -89,7 +97,7 @@ not runnable in this sandbox and use the Playwright fallback instead.
 ### Open and inspect
 
 ```bash
-$B goto http://localhost:5173/dives?dive=my-dive \
+$B goto https://dev.soriaanalytics.com/dives?dive=my-dive \
   && $B wait --networkidle \
   && $B snapshot -c \
   && $B console \
@@ -106,7 +114,7 @@ $B snapshot -a -o /tmp/dive-annotated.png
 ### Reproduce an interaction
 
 ```bash
-$B goto http://localhost:5173/dives?dive=my-dive
+$B goto https://dev.soriaanalytics.com/dives?dive=my-dive
 $B snapshot -i
 # use the returned refs, then:
 $B click @e12

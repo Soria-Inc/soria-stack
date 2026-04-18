@@ -16,8 +16,9 @@ before acting.
 
 ## Focus
 
-- gather repro steps, environment, workaround, and root-cause hints
-- deduplicate against existing issues when the connector exists
+- gather repro steps (exact MCP tool call + params), recent pipeline
+  activity, workaround, and root-cause hints
+- deduplicate against existing issues when the Linear connector exists
 - keep ticket filing as a side-quest, then return to the main workflow
 
 ## Notes

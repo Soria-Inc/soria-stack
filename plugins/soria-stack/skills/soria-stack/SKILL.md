@@ -1,6 +1,6 @@
 ---
 name: soria-stack
-description: Use when the task follows the Soria CLI workflow from the `Soria-Inc/soria-stack` repo: environment setup, status/inventory, planning, ingest/publish work, dive implementation, verification, diagnosis, or promotion. Prefer the `soria` CLI and this repo's `AGENTS.md` over ad-hoc commands. Pair with the `browse` skill for fast browser QA and UI debugging.
+description: Use when the task follows the Soria MCP workflow from the `Soria-Inc/soria-stack` repo — environment preflight, status/inventory, planning, ingest/publish work, dive implementation, verification, diagnosis, or promotion. Drive the Soria platform through `mcp__soria__*` tools and this repo's `AGENTS.md`. Pair with the `browse` skill for fast browser QA and UI debugging.
 metadata:
   source_repo: https://github.com/Soria-Inc/soria-stack
   variant: codex
@@ -9,19 +9,17 @@ metadata:
 # Soria Stack
 
 Codex adaptation of the `Soria-Inc/soria-stack` workflow. This skill is the
-CLI-first operating model for Soria work in Codex.
+MCP-first operating model for Soria work in Codex. There is no `soria` CLI.
 
 ## When to use this skill
 
-- User wants to work through a Soria environment with `soria env ...`
-- User asks what data or pipeline state exists for a scraper or domain
+- User wants to inventory what data / pipeline state exists for a concept
 - User wants a plan before changing ingestion, mappings, or dives
 - User is building or fixing a dive, verify flow, or promotion flow
 - User wants the Soria-stack workflow specifically, but inside Codex
 
 ## When not to use it
 
-- If the user explicitly wants Sumo or Soria MCP tooling, use `sumo-mcp`
 - If the task is generic repo coding with no Soria workflow implications
 - If the task is pure browser QA, jump straight to `browse`
 
@@ -30,69 +28,90 @@ CLI-first operating model for Soria work in Codex.
 Run these before making assumptions:
 
 ```bash
-soria env status
 git status --short
 ```
 
-If local app work is involved, use the repo-standard loop:
+Probe the Soria MCP (once per session):
 
-```bash
-make run-dev
-make logs
-make stop-dev
+```
+mcp__soria__database_query(sql="SELECT 1 AS ok")
 ```
 
-If `bd` is missing in the shell, proceed without it and note that the issue
-tracker CLI is unavailable in this environment.
+If the probe fails, the user must configure the Soria MCP in their Codex
+client (HTTP endpoint at `https://<your-dbos>.cloud.dbos.dev/mcp/`) and
+restart. There is no fallback — every pipeline skill depends on it.
+
+For dive work, the default local flow is `make dev-https` from the soria-2
+repo root (vite at `https://dev.soriaanalytics.com` against prod DBOS).
 
 ## Core workflow
 
 1. Inventory before action.
-   Use `soria env status`, `soria list`, `soria group list`, `soria db query`,
-   and `soria warehouse query` to understand what already exists.
+   Use `mcp__soria__database_query` (Postgres state),
+   `mcp__soria__warehouse_query` (staging warehouse),
+   `mcp__soria__pipeline_activity` (recent writes), and filesystem walks
+   under `frontend/src/dives/` to understand what already exists.
 2. Plan before building when the scope is not obvious.
-   Be explicit about the target output: pipeline change, table, dive, verify
-   pass, or promotion.
-3. Use the CLI, not ad-hoc workarounds.
-   The main surfaces are:
-   - `soria env ...`
-   - `soria scraper ...`
-   - `soria detect`, `soria extract`, `soria validate`
-   - `soria schema ...`, `soria value ...`
-   - `soria warehouse ...`
+   Be explicit about the target output: pipeline change, bronze table,
+   dive, verify pass, or promotion.
+3. Use MCP tools, not ad-hoc workarounds. The main surfaces are:
+   - `mcp__soria__scraper_manage / scraper_run / scraper_upload_urls / scraper_confirm_uploads`
+   - `mcp__soria__group_manage`, `schema_manage`, `schema_mappings`
+   - `mcp__soria__detection_run`, `extraction_run`, `validation_run`
+   - `mcp__soria__value_manage`, `derived_column_manage`
+   - `mcp__soria__warehouse_query`, `warehouse_manage`, `warehouse_diff`, `warehouse_promote`
+   - `mcp__soria__database_query`, `database_mutate`, `file_query`, `files_reprocess`
+   - `mcp__soria__news_*`, `prompt_manage`, `pipeline_activity/history/cascade`
 4. Verify with evidence.
    Show actual rows, counts, traces, or file state before claiming success.
-5. Run `soria env diff` before promotion or merge-related handoff.
+5. Reversibility, not isolation. Writes hit shared state but soft-delete
+   + the `PipelineEvent` audit trail make every write reversible.
 
 ## Dive work
 
 For dive implementation, stick to the repo's file-based flow:
 
 - dbt models under `frontend/src/dives/dbt/models/...`
+  (staging / intermediate / marts — materialized as `main_staging`,
+   `main_intermediate`, `main_marts` in MotherDuck)
 - manifests under `frontend/src/dives/manifests/...`
 - React components under `frontend/src/dives/...`
 - registration in `frontend/src/pages/DivesPage.tsx`
 - verify rows in `frontend/src/dives/dbt/seeds/verifications.csv`
+
+Local `dbt run` writes to `soria_duckdb_staging`. Prod materialization
+happens in CI on PR merge.
 
 When the user wants UI proof, invoke `browse` instead of defaulting to the
 slower Chrome-first browser tools.
 
 ## Guardrails
 
-- Do not write against prod without explicit user acknowledgment.
-- Run `soria env diff` before any landing or promotion recommendation.
+- No force-push. Rollback is `git revert` the PR (for warehouse / React) or
+  `database_mutate` flipping `deleted_at` (for Postgres state).
+- Promotion is PR + CI, never a command. `mcp__soria__warehouse_promote(pr=N)`
+  posts the file-level manifest; CI executes on merge.
 - Respect this repo's `AGENTS.md` completion rules if you end up committing:
-  tests or validation, `git pull --rebase`, `bd sync` if available, `git push`.
+  tests or validation, `git pull --rebase`, `git push`.
 - Treat `direnv` and repo-local `.env` loading as the source of truth; do not
   tell the user to `source .env`.
 
 ## Routing hints
 
-- Environment management: `soria env list|status|checkout|branch|diff`
-- Inventory and recon: `soria list`, `soria group list`, `soria db query`
-- Ingestion path: scraper -> detect/extract/validate -> mappings -> publish
-- Dive path: dbt + manifest + TSX + verifications + browser QA
-- Diagnosis: inspect actual schema or state first, then trace the failure
+- Preflight: `/env` (MCP probe + dev-https cert + recent activity)
+- Inventory and recon: `/status`
+- Planning: `/plan`
+- Ingestion path: `/ingest` (scrape → detect/extract/validate → mappings → publish)
+- Value mapping: `/map` (or `/parent-map` for company rollup)
+- Dive path: `/dive` (dbt + manifest + TSX + verifications + methodology)
+- In-chat dive inspection: `/preview`
+- Verification: `/verify`
+- Diagnosis: `/diagnose`
+- Ticketing: `/ticket`
+- Browser QA: `/browse` or `/dashboard-review`
+- Promotion: `/promote`
+- News pipeline: `/newsroom`
+- Retrospective: `/lessons`
 
 If a live page, screenshot, auth import, or UI repro is involved, switch to
 `browse`.

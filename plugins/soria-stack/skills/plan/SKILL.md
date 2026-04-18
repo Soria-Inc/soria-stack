@@ -17,6 +17,9 @@ before acting.
 ## Focus
 
 - break work into Extract, Transform, Value Map, Load, and Represent phases
+- R phase targets a dive (dbt marts + manifest + TSX + DivesPage entry +
+  verify seed rows + methodology content) — not a legacy dashboard
 - define verification before implementation
 - ask clarifying questions directly when the plan depends on a real choice
 - use mempalace when available for prior context and domain grounding
+- t-shirt sizing (S/M/L/XL), never time estimates

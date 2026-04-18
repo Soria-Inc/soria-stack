@@ -16,9 +16,12 @@ before acting.
 
 ## Focus
 
-- live dive QA against local dev or preview envs
+- live dive QA against `https://dev.soriaanalytics.com` (local dev-https
+  pointed at prod backend) or `https://soriaanalytics.com` (prod canary)
 - browser evidence for render, interactivity, correctness, and performance
-- final gate before `promote`
+- cross-check rendered values against the `verifications.csv` seed and the
+  live warehouse via `mcp__soria__warehouse_query`
+- final gate before `/promote`
 
 ## Notes
 

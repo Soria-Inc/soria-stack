@@ -1,7 +1,7 @@
 {
   "name": "soria-stack",
-  "version": "0.1.0",
-  "description": "Codex-native Soria workflow guidance plus the fast $B browse flow from Soria-Inc/soria-stack.",
+  "version": "0.2.0",
+  "description": "Codex-native Soria workflow guidance (MCP-first) plus the fast $B browse flow from Soria-Inc/soria-stack.",
   "author": {
     "name": "Soria Analytics",
     "url": "https://github.com/Soria-Inc"
@@ -15,14 +15,15 @@
     "codex",
     "browser",
     "dive",
-    "data-pipeline"
+    "data-pipeline",
+    "mcp"
   ],
   "skills": "./skills/",
   "mcpServers": "./.mcp.json",
   "interface": {
     "displayName": "Soria Stack",
-    "shortDescription": "Soria CLI workflow guidance and fast $B browser QA for Codex",
-    "longDescription": "Brings the Soria CLI workflow and the fast $B browse flow from Soria-Inc/soria-stack into Codex. Use it for Soria environments, pipeline work, dive iteration, verification, and fast browser QA without depending on slower Chrome-first flows.",
+    "shortDescription": "Soria MCP workflow guidance and fast $B browser QA for Codex",
+    "longDescription": "Brings the Soria pipeline and dive workflows from Soria-Inc/soria-stack into Codex. Routes every pipeline verb through the Soria MCP (mcp__soria__*), authors dbt SQL and React dives locally in git, and uses the fast $B browse flow for UI verification. The Soria CLI has been retired; Codex users must configure the Soria MCP HTTP endpoint in their client for the pipeline skills to work.",
     "developerName": "Soria Analytics",
     "category": "Coding",
     "capabilities": [
@@ -32,9 +33,9 @@
     ],
     "websiteURL": "https://github.com/Soria-Inc/soria-stack",
     "defaultPrompt": [
-      "Use Soria Stack to inspect this env and suggest the next CLI steps",
+      "Use Soria Stack to inventory what exists for this concept via the Soria MCP",
       "Use browse to verify this dive and capture evidence quickly",
-      "Help me run the Soria CLI workflow without using Sumo MCP"
+      "Help me promote this dive to prod via warehouse_promote + PR + CI"
     ],
     "brandColor": "#0f172a",
     "screenshots": []

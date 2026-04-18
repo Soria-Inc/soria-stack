@@ -1,6 +1,6 @@
 ---
 name: env
-description: Manage Soria development environments through the `soria env` CLI in Codex. Use for listing, creating, checking out, diffing, restoring, or tearing down environments, and keep the same CLI-first workflow as the Claude `env` skill without using Soria MCP.
+description: Preflight the Soria dev stack in Codex. Use when the user asks what they're pointed at or whether their local setup is working. There are no isolated envs anymore — MCP writes land on shared state with soft-delete safety.
 metadata:
   source_repo: https://github.com/Soria-Inc/soria-stack
   upstream_skill: env/SKILL.md
@@ -16,11 +16,14 @@ before acting.
 
 ## Focus
 
-- `soria env list|status|branch|checkout|diff|teardown|restore`
-- environment selection, worktree awareness, and prod safety
-- concrete next CLI commands instead of vague environment advice
+- probe `mcp__soria__database_query "SELECT 1"` to confirm MCP reachability
+- check `make dev-https` cert presence (`frontend/dev.soriaanalytics.com.pem`)
+- report recent writes via `mcp__soria__pipeline_activity`
+- surface uncommitted / unpushed work — shared state doesn't forgive WIP
 
 ## Notes
 
-- Use a short direct question if the user must choose an environment.
-- Honor repo `AGENTS.md` safety rules for teardown and diff checks.
+- If the MCP probe fails, the user must configure `soria` MCP in their Codex
+  client (HTTP endpoint) and restart.
+- There is no `soria env branch/checkout/status/diff/teardown/restore` — the
+  CLI is gone. `git checkout` + `make dev-https` is the local flow.
