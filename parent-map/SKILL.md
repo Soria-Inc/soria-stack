@@ -12,7 +12,7 @@ description: |
   "consolidate companies", "resolve parent", or when a new data source
   needs parent company rollup for dives.
   Use after /ingest (companies exist in warehouse), before /dive
-  (gold models need parent join). Parallel to /map (value mapping).
+  (dbt intermediate/marts need parent join). Parallel to /map (value mapping).
   (soria-stack)
 benefits-from: [ingest, map, status]
 allowed-tools:
