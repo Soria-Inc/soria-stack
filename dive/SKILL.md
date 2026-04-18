@@ -457,99 +457,197 @@ Key rules this template encodes:
 
 ## The Manifest
 
-After the marts SQL is written, create the dive manifest. This is the data
-contract the component reads via `useDiveData`:
+After the marts SQL is written, create the dive manifest at
+`frontend/src/dives/manifests/{dive-id}.manifest.tsx` (note: **`.tsx`**,
+not `.ts` — the `methodology` field is JSX). This is the single source of
+truth for the dive: title, table, columns, filters, metric picker options,
+and the methodology prose the frontend surfaces.
 
-```ts
-// frontend/src/dives/manifests/{dive-id}.manifest.ts
-import { defineDiveManifest } from "@/lib/dive-manifest";
+```tsx
+// frontend/src/dives/manifests/{dive-id}.manifest.tsx
+import { defineDiveManifest } from "@/dives/lib/dive-manifest";
 
 export default defineDiveManifest({
   id: "{dive-id}",
+  title: "{Human-readable dive title}",
+  overview: "{One-sentence description shown under the title}",
+  methodology: (
+    <p className="text-muted-foreground" style={{ lineHeight: 1.7 }}>
+      Source: {dataset name + cadence}.
+      {Grain statement — "One row = one X per Y per Z".}
+      {Key formulas — MLR, market share, YoY derivation.}
+      {Known gotchas — M&A, methodology changes, era splits.}
+    </p>
+  ),
   table: "soria_duckdb_main.main_marts.{model}",
+  modelId: "model.soria_dives.{model}",        // dbt node id for lineage
+  verificationModel: "{model}",                // seed row filter
   columns: [
-    "parent_organization",
-    "reporting_month",
-    "segment",
-    "enrollment",
+    // projection: identity cols + every metric the user can pivot on
+    "parent_company",
+    "quarter_label",
+    "total_enrollees",
     "market_share_pct",
-    "yoy_delta",
     "yoy_delta_pct",
+    // ...
   ],
-  where: "parent_organization != ''",
+  defaultTopN: 20,
+  metrics: [
+    { key: "total_enrollees",   label: "Total Enrollees", fmt: "number" },
+    { key: "market_share_pct",  label: "Market Share %",  fmt: "pct2"   },
+    { key: "yoy_delta_pct",     label: "YoY Growth %",    fmt: "pct2"   },
+    // ...
+  ],
   filters: {
-    segment: {
-      column: "segment",
-      values: [
-        "MA",
-        "PDP",
-        { key: "Total", label: "All Segments" },
-      ],
-      default: "MA",
-      prefetch: true,  // background-prefetch the other values after first paint
-    },
-    distribution: {
-      column: "distribution",
-      values: ["Individual", "Group"],
-      default: "Individual",
+    planType: {
+      column: "plan_type",
+      values: ["Full Service", "Specialized", "Dental"],
+      default: "Full Service",
+      prefetch: true,   // warm the session cache for the other values after first paint
     },
   },
 });
 ```
 
 **Rules:**
-- Explicit `columns` list — drops payload size vs `SELECT *`
-- Filter values must exist in the data — mismatches cause the "dive shows
-  nothing" failure. Verify against staging (where your local `dbt run` just
-  landed):
+- Explicit `columns` — drops payload size vs `SELECT *`.
+- Methodology lives **in the manifest** as JSX. `DiveShell` surfaces it;
+  don't wire it by hand in the component.
+- `verificationModel` is the string the `verifications.csv` seed filters by
+  (same as the dbt marts model name).
+- Every filter value must exist in the data. Verify against staging (where
+  your local `dbt run` just landed):
   ```
   mcp__soria__warehouse_query(sql="
-    SELECT DISTINCT segment FROM soria_duckdb_staging.main_marts.{model}
+    SELECT DISTINCT plan_type FROM soria_duckdb_staging.main_marts.{model}
   ")
   ```
-- `prefetch: true` on filters the user typically cycles through (so the
-  session cache is warm)
-- Manifest is the source of truth — never hardcode WHERE clauses in the
-  component
+- `prefetch: true` on filter options the user typically cycles through.
+- The manifest is the source of truth — never hardcode WHERE clauses or
+  column projections in the component.
 
 ---
 
 ## The TSX Component
 
-**Don't invent a component shape from scratch.** Copy the structure of the
-newest existing dive (check `frontend/src/dives/` for the most recently
-modified `.tsx`) and adapt it. The shared primitives in
-`frontend/src/dives/components/` are the library — use them, don't re-build.
+The component is thin: it binds filter state, calls `useDiveData`, shapes
+the rows (usually via `pivotRows`), and composes a handful of primitives
+from `frontend/src/dives/components/`. A minimal dive looks like this:
 
-Shared primitives you'll likely import (verify what exists in your tree):
+```tsx
+// frontend/src/dives/{dive-id}.tsx
+import { useMemo } from "react";
+import { useDiveData } from "@/dives/lib/use-dive-data";
+import { useDiveParam } from "@/dives/lib/use-dive-param";
+import { useDiveVerifications } from "@/dives/lib/use-dive-verifications";
+import { filterOptions, metricOptions, findMetric } from "@/dives/lib/dive-manifest";
+import { pivotRows } from "./lib/pivot";
+import { DiveShell } from "./components/DiveShell";
+import { DiveKPIRow } from "./components/DiveKPIRow";
+import { DiveSection } from "./components/DiveSection";
+import { DiveGrid } from "./components/DiveGrid";
+import manifest from "./manifests/{dive-id}.manifest";
 
+const METRICS = metricOptions(manifest);
+const { planType: PLAN_TYPES } = filterOptions(manifest);
+
+export default function MyDive() {
+  // URL-bound filter state — shareable links, browser back/forward work.
+  const [metric,   setMetric]   = useDiveParam("metric",   "total_enrollees");
+  const [planType, setPlanType] = useDiveParam("planType", "Full Service");
+
+  // Filter values flow into useDiveData; changing them re-queries.
+  const filterValues = useMemo(() => ({ planType }), [planType]);
+  const { data, isLoading } = useDiveData(manifest, filterValues);
+
+  // Verify rows for this dive — per-cell tooltips when actuals fall outside bounds.
+  const { data: verifyData } = useDiveVerifications(
+    manifest.verificationModel,
+    { enabled: !!data },
+  );
+
+  // Client-side pivot to "row per parent × column per quarter".
+  const rows     = useMemo(() => (Array.isArray(data) ? data : []), [data]);
+  const quarters = useMemo(() => [...new Set(rows.map(r => r.quarter_label))].sort(), [rows]);
+  const { pivoted } = useMemo(
+    () => pivotRows(rows, {
+      rowField:   "parent_company",
+      colField:   "quarter_label",
+      valueField: metric,
+      columns:    quarters,
+    }),
+    [rows, metric, quarters],
+  );
+
+  const metricDef = findMetric(manifest, metric)!;
+
+  return (
+    <DiveShell
+      manifest={manifest}
+      controlGroups={[
+        { label: "Plan Type", options: PLAN_TYPES, value: planType, onChange: setPlanType },
+        { label: "Metric",    options: METRICS,    value: metric,   onChange: setMetric   },
+      ]}
+    >
+      <DiveKPIRow loading={isLoading} kpis={[/* ... */]} />
+
+      <DiveSection title={`${planType} · ${metricDef.label}`} loading={isLoading}>
+        <DiveGrid
+          rowData={pivoted}
+          rowField="parent_company"
+          valueColumns={quarters}
+          columnHeaderFormat="quarter"
+          valueFormat={metricDef.fmt}
+          verifyChecks={verifyData}   // cells outside bounds get a tooltip
+        />
+      </DiveSection>
+    </DiveShell>
+  );
+}
 ```
-DiveShell            — outer layout wrapper
-DivePageHeader       — title, subtitle, methodology button
-StickyDiveHeader     — sticky filter bar on scroll
-DiveControlBar       — filter controls from the manifest
-DiveKPIRow           — top-of-page KPI cards
-DiveGrid             — AG-Grid table with hierarchical rows + verify tooltips
-DiveUSMap            — state-level choropleth
-MethodologyModal     — information panel (content pattern varies)
-VerifyModal          — semantic check results panel
-VerifyTooltip        — per-cell tooltip when a check fails
-ProseMarkdown        — render prose content (for methodology / verify bodies)
-```
 
-Plus the hooks:
+### How the composition actually works
 
-```
-useDiveData(manifest, filters, opts?)
-  → { data, isLoading, isError, source: "server" | "wasm" | "cache" }
+- **`DiveShell`** owns the page layout, the sticky filter bar built from
+  `controlGroups`, and the Methodology / Verify buttons that open the
+  manifest's methodology JSX and the verify modal. You pass the `manifest`
+  in; it reads `title` / `overview` / `methodology` itself.
+- **`useDiveData(manifest, filterValues)`** builds the SQL from the
+  manifest (columns + active filter values) and returns `{data, isLoading,
+  isError}`. It handles the dual-mode load automatically: first paint
+  arrives via the Postgres wire proxy (~500ms); the WASM DuckDB client
+  takes over transparently (~20s to warm). The component shouldn't branch
+  on "mode" — just render what's in `data`.
+- **`useDiveParam(key, default)`** is `useState` backed by the URL
+  querystring. Every filter that belongs in the manifest should use this;
+  links become shareable and browser back/forward work correctly.
+- **`useDiveVerifications(manifest.verificationModel)`** returns the rows
+  of the shared `verifications.csv` seed filtered to this dive's marts
+  model. Pass them to `DiveGrid` as `verifyChecks`; the grid walks each
+  cell and shows `VerifyTooltip` when the rendered value falls outside
+  `[min_value, max_value]`.
+- **`pivotRows(rows, {rowField, colField, valueField, columns, rowOrder?})`**
+  reshapes long-format rows into wide pivot. The marts model stays at the
+  correct grain; pivoting happens at render time.
 
-useDiveVerifications(model_name)
-  → { data: verifyRow[] }  — filters shared verifications table by model
-```
+Other primitives available in `frontend/src/dives/components/`:
+`DivePageHeader`, `StickyDiveHeader`, `DiveUSMap`, `DiveBarChart`,
+`DiveLineChart`, `DiveStackedBarChart`, `DiveDashboardGrid` (for
+multi-section dives), `DiveBackLink`, `DiveFullscreen`. Scan the directory
+before inventing a new one — reuse beats bespoke.
 
-Copy-paste the newest dive, rename the identifiers, swap the manifest
-import, and wire the new verify model name. Keep methodology content
-consistent with the existing pattern in your tree.
+### Anti-patterns in the component
+
+- **Branching on "the WASM isn't ready yet."** `useDiveData` hides the
+  transition. Don't try to show different UIs for server vs WASM modes.
+- **Hardcoding filter values in the component.** Filters live in the
+  manifest; `DiveShell` builds the control bar from them.
+- **Rolling your own grid.** `DiveGrid` has verify tooltips, heatmap
+  toggle, hierarchical rows, and `rowOrder` support. Extend it rather than
+  fork.
+- **Putting methodology text inside the component.** Methodology is a JSX
+  field on the manifest. That's what `DiveShell` surfaces — bypassing it
+  means customers don't see your explanation.
 
 ---
 
@@ -564,7 +662,8 @@ min_value, max_value, source, source_url
 ```
 
 - **`model`** — the dbt marts model name (e.g. `naic_national_kpis_by_company`).
-  This is how dives filter to their own checks.
+  Matches the manifest's `verificationModel`. This is how dives filter to
+  their own checks.
 - **`description`** — human-readable prose explaining what the check validates
   (e.g. "UNH Total membership ~23M")
 - **`parent_company`, `lob`, `quarter`, `metric`** — the row/column/cell this
@@ -580,54 +679,28 @@ then run:
 
 ```bash
 cd frontend/src/dives/dbt
-dbt seed --target dev --select verifications
+../../../../.venv/bin/dbt seed --select verifications
 ```
 
-This refreshes `soria_duckdb_main.main.verifications` (or the appropriate
-target). The dive component will pick up your new checks automatically via
-`useDiveVerifications({model_name})`.
-
-**How the dive component wires this up:**
-
-```tsx
-// Inside your dive component
-import { useDiveVerifications } from "@/dives/lib/use-dive-verifications";
-
-const { data: verifyData } = useDiveVerifications("naic_national_kpis_by_company");
-// verifyData is an array of check rows filtered to this model
-
-// Pass to DiveGrid — cells outside bounds get a verify tooltip
-<DiveGrid
-  data={data}
-  verifyChecks={verifyData}
-  ...
-/>
-```
+The dive component picks up your new rows automatically via
+`useDiveVerifications(manifest.verificationModel)`.
 
 ## Methodology content
 
-The methodology pattern (what customers see when they click "How this is
-built") is **not a formalized file pattern yet** — it varies by dive in
-the current codebase. Before adding methodology to a new dive:
+Methodology lives **in the manifest** as a JSX element on the
+`methodology` field (see the Manifest section above). `DiveShell` renders
+it behind the Methodology button — no separate file, no prop passing, no
+bespoke pattern per dive.
 
-1. Look at how an existing dive does it. Reasonable starting point:
-   ```bash
-   grep -rl "MethodologyModal\|DivePageHeader" frontend/src/dives/
-   ```
-2. Match the convention. Likely candidates:
-   - Methodology content passed as a prop to `DivePageHeader` or `DiveShell`
-   - A sibling `.md` or `.ts` file co-located with the dive component
-   - Inline in the dive component as a constant
+Every dive's methodology must cover:
 
-3. At minimum, every dive's methodology must surface:
-   - Data sources (name, URL, update cadence)
-   - Metric definitions (each metric's formula in plain language)
-   - Grain ("one row = one X per Y per Z")
-   - Known gotchas (M&A events, source methodology changes, bounds)
+- **Sources** — dataset name, URL, update cadence
+- **Grain** — "one row = one X per Y per Z"
+- **Metric definitions** — each metric's formula in plain language
+- **Gotchas** — M&A events, source methodology changes, bounds
 
-Don't invent a new convention — match what `naic-kpis-v2.tsx` or whatever
-the latest dive uses. If no pattern is obvious, surface it as a question
-for the user before writing.
+Keep it prose, not a spec sheet. Customers read it once to decide whether
+to trust the numbers; make that decision easy.
 
 ---
 

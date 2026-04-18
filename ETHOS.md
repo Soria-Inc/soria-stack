@@ -146,7 +146,7 @@ Before creating any scraper, group, schema, or extractor: download a sample file
 Pick the oldest file, the newest file, and one from mid-history. Extract those 3 first. Compare each against the source. Only after all 3 pass, run the full batch. This prevents burning 7+ minutes on a wrong approach.
 
 ### 3. Extract wide, transform in SQL
-When the source has a wide table (measures as columns), extract it as-is — one row per entity with N value columns. Unpivot to long format in the silver SQL model, not in the extractor. Complex reshaping during extraction fails; simple extraction is reliable extraction.
+When the source has a wide table (measures as columns), extract it as-is — one row per entity with N value columns. Unpivot to long format in the dbt staging model, not in the extractor. Complex reshaping during extraction fails; simple extraction is reliable extraction.
 
 ### 4. Bronze loads raw data. Staging cleans. Intermediate joins. Marts ship.
 - **Bronze** = raw tables published by ingest into `soria_duckdb_staging`. `mcp__soria__warehouse_manage(action="publish")` is the only way rows land here. Don't hand-insert.
@@ -193,7 +193,7 @@ Don't create 6 marts models for enrollment, market share, YoY, plan count, compa
 Before writing any SQL model, state explicitly: "One row = one [entity] per [time period] per [dimensions]." Then check: does the dive pivot/chart aggregate across any dimension not in the display? If yes, will ratio metrics produce garbage? If yes, either drop that dimension from the grain or only include additive metrics (enrollment, counts) at that grain.
 
 ### 15. QUALIFY for dedup, not subqueries
-When the same data appears in multiple source files (e.g., CA Medicaid publishes full snapshots each month), dedup in silver with `QUALIFY ROW_NUMBER() OVER (PARTITION BY [natural key] ORDER BY _source_file DESC) = 1`. Bronze stays a true raw archive.
+When the same data appears in multiple source files (e.g., CA Medicaid publishes full snapshots each month), dedup in the dbt staging model with `QUALIFY ROW_NUMBER() OVER (PARTITION BY [natural key] ORDER BY _source_file DESC) = 1`. Bronze stays a true raw archive.
 
 ### 16. Every column needs a business label
 Every column in a staging, intermediate, or marts model needs a display name that the dive manifest can reference. Keep them short: `mlr_pct = 'Medical Loss Ratio'`, not the full formula. Column descriptions live in the dbt model config, not scattered across components.

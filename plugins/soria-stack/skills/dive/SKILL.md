@@ -18,15 +18,24 @@ before acting.
 
 - dbt marts SQL under `frontend/src/dives/dbt/models/marts/...`
   (layers: staging → intermediate → marts; no upstream SQLMesh)
-- manifests under `frontend/src/dives/manifests/...`
-- React components under `frontend/src/dives/...`
-- DivesPage registration, rows in the shared `verifications.csv` seed,
-  methodology content wired into the component
+- manifests at `frontend/src/dives/manifests/{id}.manifest.tsx` — **`.tsx`**
+  because the `methodology` field is JSX. Manifest owns `title`, `overview`,
+  `methodology`, `table`, `modelId`, `verificationModel`, `columns`,
+  `metrics`, `filters`, `defaultTopN`.
+- React components at `frontend/src/dives/{id}.tsx`. Compose
+  `DiveShell` + `useDiveData(manifest, filters)` + `useDiveParam` (URL
+  state) + `useDiveVerifications(manifest.verificationModel)` +
+  `pivotRows` + `DiveGrid` / `DiveKPIRow` / `DiveSection`.
+- DivesPage registration, rows in the shared `verifications.csv` seed
 - grain-first design, not just visual assembly
 - data survey via `mcp__soria__warehouse_query` before writing SQL
 
 ## Notes
 
+- Methodology lives in the manifest as JSX. `DiveShell` surfaces it; don't
+  put it in the component.
+- `useDiveData` hides the dual-mode load (Postgres proxy → WASM). Don't
+  branch on mode in the component.
 - Local `dbt run` writes to `soria_duckdb_staging`. Prod target is absent
   from committed `profiles.yml`; CI injects it on PR merge.
 - Use `preview` for in-chat output or `dashboard-review` for live UI proof
