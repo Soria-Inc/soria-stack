@@ -35,7 +35,8 @@ verb is an MCP tool. SQL and React dives are authored locally in git.
                     https://dev.soriaanalytics.com
                     (local vite → prod DBOS API + Clerk,
                      DuckDB-WASM + Postgres wire proxy,
-                     MethodologyModal + VerifyModal)
+                     MethodologyModal + VerifyModal,
+                     staging/prod badge ⟷ X-SQLMESH-ENV)
                                      │
                           git push → gh pr create
                                      ▼
@@ -49,6 +50,13 @@ Every MCP write to Postgres is **soft-delete reversible** via `deleted_at` /
 `deleted_by` columns and a `PipelineEvent` audit trail. There are no hard
 deletes. To undo, flip `deleted_at` through `mcp__soria__database_mutate`
 (see `/diagnose` for the pattern).
+
+**The staging/prod badge** in the app chrome (`EnvironmentBadge`) is the
+dev iteration surface. Amber "staging" routes dive queries to
+`soria_duckdb_staging` (where your local `dbt run` just landed); green
+"prod" routes to `soria_duckdb_main` (customer-facing). Default is prod;
+customer view locks to prod. Plumbed via the `X-SQLMESH-ENV` header
+(legacy name — SQLMesh itself is retired).
 
 Classic backend-rendered dashboards (AG-Grid + `@dashboard` YAML) are gone.
 The backend is a thin FastAPI shell: auth, scraper management, news, file

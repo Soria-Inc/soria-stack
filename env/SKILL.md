@@ -61,6 +61,11 @@ Your local work is:
 - **Git checkout** of `soria-2` (ideally on a feature branch)
 - **`make dev-https`** — vite at `https://dev.soriaanalytics.com` proxied
   to prod DBOS API + Clerk. No local backend needed for dive work.
+- **Staging/prod badge** in the app chrome (amber "staging" / green "prod").
+  Default is **prod**. Click to toggle. Picks which MotherDuck the backend
+  queries for that session (via `X-SQLMESH-ENV` header — legacy name; it
+  routes between `MOTHERDUCK_DATABASE` and `MOTHERDUCK_PROD_DATABASE`). To
+  see your local `dbt run` output, toggle to **staging**.
 - **`mcp__soria__*`** — how this skill pack reaches the Soria platform
 
 ---
@@ -78,14 +83,24 @@ mcp__soria__database_query(sql="SELECT 1 AS ok")
 If it errors, the MCP server is unreachable or not configured. Tell the
 user to check `~/.claude.json → mcpServers.soria` and restart Claude Code.
 
-### 2. Local dev-https cert
+### 2. Local dev-https cert + vite process
 
 ```bash
-[ -f frontend/dev.soriaanalytics.com.pem ] && echo "ok" || echo "missing"
+[ -f frontend/dev.soriaanalytics.com.pem ] && echo "cert: ok" || echo "cert: missing — run make dev-https-setup"
+curl -sk -o /dev/null -w "dev-https: %{http_code}\n" https://dev.soriaanalytics.com/
+lsof -ti:5189 >/dev/null 2>&1 && echo "vite: running (pid $(lsof -ti:5189 | head -1))" || echo "vite: down"
 ```
 
-Missing cert? Tell the user to run `make dev-https-setup` once. Until that
-runs, `https://dev.soriaanalytics.com` won't work.
+- **Cert missing** → one-time setup: `make dev-https-setup`.
+- **dev-https returns 000 or vite is down** → vite died. `make dev-https`
+  runs in the foreground so it dies with its shell. Restart detached:
+  ```bash
+  cd frontend && nohup npx vite --port 5189 > /tmp/soria-vite.log 2>&1 &
+  disown
+  ```
+  Stop later with `kill $(lsof -ti:5189)`. If this keeps happening, patch
+  the `dev-https` Makefile target to daemonize (like `run-dev` does via
+  `scripts/run-dev.sh`) — worth a `/ticket`.
 
 ### 3. Uncommitted / unpushed work
 

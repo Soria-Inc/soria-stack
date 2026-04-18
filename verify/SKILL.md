@@ -42,6 +42,12 @@ Read `ETHOS.md`. Key principles: #10, #11, #17, #18, #19, #20, #28, #29.
 criteria for each ETVLR phase. If ingest or dive artifacts exist, read those
 too for table names and schemas.
 
+**Badge awareness:** When cross-checking rendered dive values against the
+warehouse, query the database that matches the frontend's active
+`EnvironmentBadge` mode — `soria_duckdb_staging.*` for amber (staging),
+`soria_duckdb_main.*` for green (prod). A mismatch between dive and
+warehouse usually comes from querying the wrong one.
+
 ## Skill routing (always active)
 
 - Verification reveals extraction bugs → invoke `/ingest`

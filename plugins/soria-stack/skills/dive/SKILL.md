@@ -38,6 +38,10 @@ before acting.
   branch on mode in the component.
 - Local `dbt run` writes to `soria_duckdb_staging`. Prod target is absent
   from committed `profiles.yml`; CI injects it on PR merge.
+- **Iteration loop:** local `dbt run` → open `dev.soriaanalytics.com` →
+  click the `EnvironmentBadge` (amber/green pill) to **staging** to see
+  your changes; toggle back to **prod** for the customer view. Default is
+  prod. The badge sends `X-SQLMESH-ENV` (legacy name; not SQLMesh-related).
 - Use `preview` for in-chat output or `dashboard-review` for live UI proof
   after implementation.
 - Use mempalace when available for domain definitions or prior design context.

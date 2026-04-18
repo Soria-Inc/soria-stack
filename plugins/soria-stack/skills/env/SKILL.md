@@ -27,3 +27,9 @@ before acting.
   client (HTTP endpoint) and restart.
 - There is no `soria env branch/checkout/status/diff/teardown/restore` — the
   CLI is gone. `git checkout` + `make dev-https` is the local flow.
+- **Vite liveness:** `curl -sk -o /dev/null -w "%{http_code}\n"
+  https://dev.soriaanalytics.com/` — if 000, `make dev-https` runs in the
+  foreground and died with its shell. Restart detached:
+  `cd frontend && nohup npx vite --port 5189 > /tmp/soria-vite.log 2>&1 & disown`.
+- **Staging/prod badge:** default is prod; toggle to staging to see your
+  local `dbt run` output. Customer view locks to prod.

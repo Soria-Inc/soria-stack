@@ -55,11 +55,16 @@ mkdir -p ~/.soria-stack/artifacts
 Ask the user for the **dive id** (required — matches the manifest filename
 without extension, e.g. `naic-kpis-by-company`) and the **base URL** (default
 `https://dev.soriaanalytics.com` for local dev-https, or
-`https://soriaanalytics.com` for prod canary). Do not guess.
+`https://soriaanalytics.com` for prod canary). Also ask which **badge mode**
+to review in — **staging** (amber, the user's uncommitted `dbt run` output)
+or **prod** (green, the live customer-facing data). Pre-merge review = staging.
+Post-merge canary = prod. Do not guess either.
 
-If the dive isn't reachable (curl fails), report BLOCKED with exact
-instructions: `make dev-https` from the soria-2 repo root. Don't try to
-start the server yourself.
+If the dive isn't reachable (`curl https://dev.soriaanalytics.com/` returns
+000), vite is down. `make dev-https` runs foreground so it dies with its
+shell. Report BLOCKED with the restart recipe: `cd frontend && nohup npx
+vite --port 5189 > /tmp/soria-vite.log 2>&1 & disown`. Don't start it in
+your own tool shell without nohup — it'll die when the tool call ends.
 
 If the dive loads but shows the Clerk sign-in form in Gate 1, report BLOCKED
 and point the user at `/browse`'s auth bootstrap section — sign in Arc/Chrome,
@@ -185,21 +190,23 @@ manifest pointing at the wrong table.
 - Tolerance: < 0.5% absolute relative drift unless seed bounds are explicit.
 
 **Check B — rendered vs warehouse**:
-- From the manifest: read `table` (the marts model).
-- Query the warehouse with the same filter state the UI has applied. When
-  reviewing against `dev.soriaanalytics.com` (prod backend), query
-  `soria_duckdb_main.*` to match what the UI sees:
+- From the manifest: read `table` (the marts model name).
+- **Query the warehouse in the same badge mode the UI is using:**
+  - Staging badge (amber) → `soria_duckdb_staging.main_marts.{model}`
+  - Prod badge (green)    → `soria_duckdb_main.main_marts.{model}`
   ```
   mcp__soria__warehouse_query(sql="
     SELECT <primary_entity>, <time_column>, <metric_column>
-    FROM <marts_table>
+    FROM <schema>.main_marts.<model>
     WHERE <lob_column> = '<active LOB>'
     ORDER BY <metric_column> DESC LIMIT 10
   ")
   ```
 - Diff top-5 rendered rows against top-5 warehouse rows. Mismatch means:
   stale dbt run, session cache poison, manifest pointing at the wrong
-  table, or the dive applying silent client-side filters.
+  table, the dive applying silent client-side filters, **or the badge
+  mode doesn't match what you queried**. Always confirm badge mode before
+  calling a Check B mismatch a FAIL.
 
 Pass: both checks clean.
 PASS_WITH_CONCERNS: ≤ 10% of values drift 0.5–2% OR Check A blocked but B clean.

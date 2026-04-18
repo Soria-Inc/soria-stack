@@ -139,13 +139,31 @@ review stays readable.
 ## Iterative dev loop
 
 The default flow is `make dev-https`: vite at `https://dev.soriaanalytics.com`
-proxies `/api` to the prod DBOS backend + Clerk. This points the frontend
-at **prod** MotherDuck data — so your new dive will show prod data until
-the PR merges and CI materializes your marts model to prod.
+proxies `/api` to the prod DBOS backend + Clerk. The backend serves **both**
+a staging and a prod MotherDuck — the frontend picks which one to query
+via the **staging/prod badge** (amber "staging" / green "prod") in the app
+chrome. Default is prod.
 
-For faster iteration on SQL before committing, use `/preview` — it queries
-`soria_duckdb_staging` via `mcp__soria__warehouse_query` and renders the
-dive as markdown tables in chat, without needing the frontend at all.
+### The iteration loop
+
+1. Edit dbt SQL locally in `frontend/src/dives/dbt/models/...`.
+2. `../../../../.venv/bin/dbt run --select {model}` — lands in
+   `soria_duckdb_staging.main_marts.{model}`.
+3. Open `https://dev.soriaanalytics.com/dives?dive={dive-id}` (or already
+   open — hot reload picks up component changes).
+4. **Click the badge to toggle to staging** — the same page re-queries
+   against your fresh `dbt run` output. Iterate.
+5. When satisfied, toggle back to prod for a "what does the customer
+   actually see today?" sanity check.
+6. Commit → PR → CI materializes to `soria_duckdb_main` on merge. Prod
+   badge mode then reflects your work.
+
+The toggle is implemented via the `X-SQLMESH-ENV` header (legacy name;
+doesn't mean SQLMesh is involved) on every request from `dashboardClient`.
+Customer view locks to prod — the badge is disabled there.
+
+For fast in-chat inspection without opening a browser, `/preview` queries
+`soria_duckdb_staging` directly via `mcp__soria__warehouse_query`.
 
 ---
 

@@ -152,7 +152,7 @@ type because the AI will initially believe the "OK" response.
 
    - `dbt run` said "1 of 1 OK" → query the materialized marts row:
      ```
-     mcp__soria__warehouse_query(sql="SELECT COUNT(*) FROM soria_duckdb_staging.marts.{model}")
+     mcp__soria__warehouse_query(sql="SELECT COUNT(*) FROM soria_duckdb_staging.main_marts.{model}")
      ```
 
    - `dbt test` said pass → read run-results:
@@ -212,13 +212,13 @@ multi-layer tracing.
 
    ```
    # Layer 5: Marts (what the dive queries)
-   mcp__soria__warehouse_query(sql="SELECT COUNT(*) FROM soria_duckdb_staging.marts.{model}")
+   mcp__soria__warehouse_query(sql="SELECT COUNT(*) FROM soria_duckdb_staging.main_marts.{model}")
 
    # Layer 4: Intermediate (joins + logic)
-   mcp__soria__warehouse_query(sql="SELECT COUNT(*) FROM soria_duckdb_staging.intermediate.{model}")
+   mcp__soria__warehouse_query(sql="SELECT COUNT(*) FROM soria_duckdb_staging.main_intermediate.{model}")
 
    # Layer 3: Staging (cleaned + typed)
-   mcp__soria__warehouse_query(sql="SELECT COUNT(*) FROM soria_duckdb_staging.staging.{model}")
+   mcp__soria__warehouse_query(sql="SELECT COUNT(*) FROM soria_duckdb_staging.main_staging.{model}")
 
    # Layer 2: Bronze (raw published data)
    mcp__soria__warehouse_query(sql="SELECT COUNT(*) FROM soria_duckdb_staging.bronze.{table}")
@@ -245,7 +245,7 @@ multi-layer tracing.
      ```
      mcp__soria__warehouse_query(sql="
        SELECT DISTINCT {filter_column}
-       FROM soria_duckdb_staging.marts.{model}
+       FROM soria_duckdb_staging.main_marts.{model}
      ")
      ```
    - Data loaded 2-3x → repeated publish without dedup.
@@ -282,10 +282,17 @@ Column doesn't exist, table not found, or queries return unexpected structure.
      Python `@property` but not in the database. Check the model code.
    - **Migration not applied:** Column exists in code but not in the database.
      Check Alembic migration status.
-   - **Wrong table name:** dbt marts in staging live at
-     `soria_duckdb_staging.marts.{model}`. In prod: `soria_duckdb_main.marts.{model}`.
-     Bronze tables live at `soria_duckdb_staging.bronze.{table}` (or prod
-     counterpart).
+   - **Wrong table name:** dbt layers live at
+     `soria_duckdb_staging.main_staging.{m}`,
+     `soria_duckdb_staging.main_intermediate.{m}`, and
+     `soria_duckdb_staging.main_marts.{m}` (prod counterparts under
+     `soria_duckdb_main`). Bronze tables live at
+     `soria_duckdb_staging.bronze.{table}`.
+   - **Staging/prod badge mode:** the frontend routes queries to staging or
+     prod via the amber/green `EnvironmentBadge` (default prod), backed by
+     the `X-SQLMESH-ENV` header (legacy name). If the user reports "data
+     looks wrong" on `dev.soriaanalytics.com`, check which badge mode is
+     active before chasing it as a pipeline bug.
 
 3. **For warehouse schema issues:**
    ```
@@ -318,6 +325,8 @@ Timeouts, connection errors, slow queries, cold starts, dive load failures.
 | **Durable Object event relay** (`workers/event-relay`) | Event dropped, relay stuck | Check Cloudflare worker logs; re-trigger event |
 | **WASM cold start** (dive) | First load takes ~20s to download/compile client | Normal — distinguish from "broken" (dual-mode loading) |
 | **Postgres wire proxy** (dive fallback) | 30s statement timeout | Reduce query complexity or add marts aggregation |
+| **Local vite** (`dev.soriaanalytics.com`) | "The frontend is down" / `curl https://dev.soriaanalytics.com/` returns 000 | `make dev-https` runs foreground and dies with its shell. Restart detached (see step 7). |
+| **Staging/prod badge** | "Data looks wrong" | Check the badge mode first (amber staging / green prod). Toggling between them routes to different MotherDuck databases. Default is prod. |
 
 ### Diagnostic steps
 
@@ -327,7 +336,7 @@ Timeouts, connection errors, slow queries, cold starts, dive load failures.
    ```
    mcp__soria__warehouse_query(sql="
      SELECT table_name FROM information_schema.tables
-     WHERE table_schema = 'marts'
+     WHERE table_schema = 'main_marts'
    ")
    ```
    ```bash
@@ -354,6 +363,23 @@ Timeouts, connection errors, slow queries, cold starts, dive load failures.
    cd workers/event-relay && wrangler tail
    ```
 
+7. **For "frontend is down" / vite dead:** Probe, then restart detached.
+   `make dev-https` runs vite in the foreground — it dies with the shell
+   that launched it. Use `nohup + disown` to keep it alive past the
+   current tool session.
+   ```bash
+   curl -sk -o /dev/null -w "%{http_code}\n" https://dev.soriaanalytics.com/
+   lsof -ti:5189 >/dev/null && echo "vite up" || echo "vite down"
+
+   # Restart (from soria-2 repo root):
+   cd frontend && nohup npx vite --port 5189 > /tmp/soria-vite.log 2>&1 &
+   disown
+   # Stop later:  kill $(lsof -ti:5189)
+   ```
+   If this keeps happening, the real fix is patching the `dev-https`
+   Makefile target to daemonize the way `run-dev` does (via
+   `scripts/run-dev.sh`). Worth a `/ticket`.
+
 ### Disposition
 - Transient → **Retry** (no action needed)
 - Stale dbt marts → **Fix inline** (`dbt run --select {model}`)
@@ -361,6 +387,8 @@ Timeouts, connection errors, slow queries, cold starts, dive load failures.
 - Pool exhaustion → **Ticket** (container cleanup or pool config)
 - Event relay stuck → **Ticket** + manual re-trigger
 - WASM cold start confused for breakage → **Document** (not a bug)
+- Vite died → **Fix inline** (nohup restart). If recurrent, **Ticket** the Makefile.
+- "Data looks wrong" but badge is on prod (or staging) → **Check badge** before deeper investigation.
 
 ---
 
