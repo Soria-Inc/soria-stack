@@ -2,7 +2,7 @@
 name: dashboard-review
 description: |
   Ship-readiness review for a dive. Runs six gates end-to-end against a live
-  dive (local dev or a preview env), collects evidence, produces one
+  dive (dev.soriaanalytics.com or soriaanalytics.com), collects evidence, produces one
   aggregated report. This is the gate before /promote — if it passes, the
   dive is safe for customers. Checks: render (Phase 1 Postgres proxy + Phase 2
   WASM), data correctness (rendered values vs the verifications seed AND
@@ -36,19 +36,9 @@ export BROWSE_PARENT_PID=0       # see /browse preamble — prevents server self
 mkdir -p "$(dirname "$BROWSE_STATE_FILE")"
 echo "browse: $B"
 
-# 2. Confirm active env + soria CLI authed. Gate 2 Check B (warehouse cross-ref)
-#    needs `soria warehouse query` to work; fail fast if not.
-SORIA_STATUS=BLOCKED
-if command -v soria >/dev/null 2>&1; then
-  if soria env status >/dev/null 2>&1; then
-    SORIA_STATUS=OK
-    soria env status 2>&1
-  else
-    echo "soria CLI present but no env is active — Gate 2 Check B (warehouse cross-ref) will be BLOCKED."
-    echo "Fix: run from a soria worktree with .env, or \`soria auth setup\` + \`soria env checkout <env>\`."
-  fi
-fi
-echo "soria: $SORIA_STATUS"
+# 2. Gate 2 Check B (warehouse cross-ref) needs `mcp__soria__warehouse_query`
+#    to work. Skip this shell probe — verify at runtime by running a trivial
+#    query and bailing if it errors.
 
 # 3. Assert $B is signed in. cookie-import succeeds silently even when Arc is
 #    signed out (imports 13 cookies with __client_uat=0 but no __session).
@@ -64,15 +54,16 @@ mkdir -p ~/.soria-stack/artifacts
 
 Ask the user for the **dive id** (required — matches the manifest filename
 without extension, e.g. `naic-kpis-by-company`) and the **base URL** (default
-`http://localhost:5173`). Do not guess.
+`https://dev.soriaanalytics.com` for local dev-https, or
+`https://soriaanalytics.com` for prod canary). Do not guess.
 
 If the dive isn't reachable (curl fails), report BLOCKED with exact
-instructions: `cd frontend && bun dev` or equivalent. Don't try to start
-the server yourself.
+instructions: `make dev-https` from the soria-2 repo root. Don't try to
+start the server yourself.
 
 If the dive loads but shows the Clerk sign-in form in Gate 1, report BLOCKED
 and point the user at `/browse`'s auth bootstrap section — sign in Arc/Chrome,
-`$B cookie-import-browser arc --domain localhost`.
+`$B cookie-import-browser arc --domain dev.soriaanalytics.com`.
 
 ## What this skill is (and isn't)
 
@@ -96,7 +87,7 @@ warehouse table. It's checking the UI-to-warehouse bridge, not the warehouse.
    after the page settles are real.
 3. **Empty grid with an active filter ≠ broken** if that filter legitimately
    has zero rows in the warehouse. Always cross-check against
-   `soria warehouse query` before filing a bug.
+   `mcp__soria__warehouse_query` before filing a bug.
 4. **Declare "FAIL" only on customer-visible defects.** Formatting bugs,
    wrong numbers, missing modals, console errors that fire on first paint,
    controls that do nothing. Cosmetic warnings in dev mode are not FAILs.
@@ -195,14 +186,16 @@ manifest pointing at the wrong table.
 
 **Check B — rendered vs warehouse**:
 - From the manifest: read `table` (the marts model).
-- Query the warehouse with the same filter state the UI has applied:
-  ```bash
-  soria warehouse query "
-  SELECT <primary_entity>, <time_column>, <metric_column>
-  FROM <marts_table>
-  WHERE <lob_column> = '<active LOB>'
-  ORDER BY <metric_column> DESC LIMIT 10
-  "
+- Query the warehouse with the same filter state the UI has applied. When
+  reviewing against `dev.soriaanalytics.com` (prod backend), query
+  `soria_duckdb_main.*` to match what the UI sees:
+  ```
+  mcp__soria__warehouse_query(sql="
+    SELECT <primary_entity>, <time_column>, <metric_column>
+    FROM <marts_table>
+    WHERE <lob_column> = '<active LOB>'
+    ORDER BY <metric_column> DESC LIMIT 10
+  ")
   ```
 - Diff top-5 rendered rows against top-5 warehouse rows. Mismatch means:
   stale dbt run, session cache poison, manifest pointing at the wrong
@@ -215,7 +208,7 @@ FAIL: any value drifts > 2%, any sign is flipped, any top-5 row mismatch between
 Known failure modes:
 - **Wrong denominator** → MLR = `SUM(medical_claims) / NULLIF(SUM(premiums_earned), 0)`
   but Sigma / CMS use `premiums_written`. UNH FEHB showed 98.7% vs. 93.6%.
-  Fix in the silver/gold SQL, not the dive.
+  Fix in the staging/intermediate SQL, not the dive.
 - **Ratio averaged before aggregation** (ETHOS #12) → market share > 100%
   because "All" distribution double-counted Individual + Group rows.
 - **Saved default filter not applied** → manifest wrote
@@ -422,8 +415,7 @@ Write to `~/.soria-stack/artifacts/dashboard-review-<dive>-<YYYYMMDD-HHMM>.md`:
 ```markdown
 ## Dashboard review: <dive>
 Run: <timestamp>
-Active env: <env name or "prod read-only">
-URL tested: <full URL>
+URL tested: <full URL — dev.soriaanalytics.com or soriaanalytics.com>
 Dive manifest: frontend/src/dives/<dive>.manifest.ts
 Marts table: <schema.table from manifest>
 

@@ -100,34 +100,40 @@ These logs feed into `/lessons` for continuous improvement.
 
 ---
 
-## CLI-First Tool Invocation
+## MCP-First Tool Invocation
 
-### All operations go through `soria`
-Skills drive the platform exclusively through the `soria` CLI. Never invoke
-MCP tools directly. Never hit internal Python modules. The CLI surface is:
+### All pipeline operations go through the Soria MCP
+Skills drive the platform exclusively through the `mcp__soria__*` tool
+namespace. Never hit internal Python modules. Never shell out to a
+`soria` CLI — there isn't one. The tool surface is documented in
+`MCP_TOOL_MAP.md`; the highlights:
 
 ```
-soria env       list | branch | teardown | restore | checkout | status | diff
-soria scraper   run | test | upload-urls | confirm
-soria warehouse query | publish | status | unpublish | materialize
-soria schema    read | update | mappings-read | mappings-update
-soria value     read | index | map
-soria model     list | get
-soria extractor list
-soria group     list | show | create | assign
-soria file      show | list | open | reprocess
-soria db        query | schema
-soria list      soria detect  soria extract  soria validate  soria revert
-soria auth      soria --env <local|prod|URL>
+scraper_manage / scraper_run / scraper_upload_urls / scraper_confirm_uploads
+group_manage / schema_manage / schema_mappings
+detection_run / extraction_run / validation_run
+extractor_manage / prompt_manage
+value_manage / derived_column_manage
+warehouse_query / warehouse_manage / warehouse_diff / warehouse_promote
+database_query / database_mutate
+file_query / files_reprocess / search / chunk_search
+pipeline_activity / pipeline_history / pipeline_cascade
+news_pipeline / news_branches / news_articles / news_events
 ```
 
-If a command the skill needs doesn't exist yet, flag it clearly — don't fall
-back to MCP or direct module imports.
+If a tool the skill needs doesn't exist, flag it clearly — don't fall back
+to direct DB writes or ad-hoc scripts. SQL and React dives are the
+exception: those are authored locally in `frontend/src/dives/` and shipped
+via `git push` + PR.
 
-### Environment awareness is mandatory
-Every skill preamble reports `soria env list` active state. Writes against
-prod require explicit acknowledgment — writes while silently pointing at prod
-are never acceptable.
+### Reversibility, not isolation
+There are no isolated dev environments. MCP writes land on shared
+Postgres + `soria_duckdb_staging`. Every write is soft-delete reversible
+via `deleted_at` / `deleted_by` columns and the `PipelineEvent` audit
+trail. To undo, flip `deleted_at` through `mcp__soria__database_mutate`
+(respecting `SOFT_DELETE_CASCADES`) — or for a promoted warehouse change,
+`git revert` the PR that promoted it. Every skill preamble should surface
+what recent writes have occurred so the user can audit.
 
 ---
 
@@ -142,14 +148,14 @@ Pick the oldest file, the newest file, and one from mid-history. Extract those 3
 ### 3. Extract wide, transform in SQL
 When the source has a wide table (measures as columns), extract it as-is — one row per entity with N value columns. Unpivot to long format in the silver SQL model, not in the extractor. Complex reshaping during extraction fails; simple extraction is reliable extraction.
 
-### 4. Bronze loads raw data. Silver types, unpivots, and cleans. Gold joins. Marts ship.
-- **Bronze** = raw warehouse tables published from extraction. `soria warehouse publish` is the only way rows land here. Don't hand-insert.
-- **Silver** = explicit `CAST` on every column, unpivot wide metric columns into `metric_name`/`metric_value` rows, rename to clean snake_case, filter invalid records. One silver model per bronze table. No joins in silver.
-- **Gold** = joins across silvers, business logic, entity resolution, temporal alignment, parent-company rollups.
-- **Marts** (the dive's dbt project, `soria_dives`) = dashboard-ready output. One marts model per dive. Tests via `dbt test`.
+### 4. Bronze loads raw data. Staging cleans. Intermediate joins. Marts ship.
+- **Bronze** = raw tables published by ingest into `soria_duckdb_staging`. `mcp__soria__warehouse_manage(action="publish")` is the only way rows land here. Don't hand-insert.
+- **Staging** (`frontend/src/dives/dbt/models/staging/`) = explicit `CAST` on every column, unpivot wide metric columns into `metric_name`/`metric_value` rows, clean snake_case, filter invalid records. One staging model per bronze table. No joins in staging. Materialized as views.
+- **Intermediate** (`models/intermediate/`) = joins across staging models, business logic, entity resolution, temporal alignment, parent-company rollups. Materialized as views.
+- **Marts** (`models/marts/`) = dashboard-ready output. One marts model per dive. Materialized as tables. Tests via `dbt test`.
 
-### 5. Silver gets everything — Gold decides what matters
-In silver, unpivot ALL metric columns except dimension columns (identifiers, addresses, dates, provider type). If someone needs "Prepaid Expenses" or "PT Medicaid visits," they shouldn't have to go back to bronze. Gold is where you join across silvers, apply business logic, de-cumulate YTD values, and decide the final grain.
+### 5. Staging gets everything — Intermediate decides what matters
+In staging, unpivot ALL metric columns except dimension columns (identifiers, addresses, dates, provider type). If someone needs "Prepaid Expenses" or "PT Medicaid visits," they shouldn't have to go back to bronze. Intermediate is where you join across staging, apply business logic, de-cumulate YTD values, and decide the final grain.
 
 ### 6. Don't mutate extraction outputs
 If an extraction produced wrong data, fix the extractor/prompt and re-extract. Never hand-edit a CSV or patch values in the warehouse. The pipeline must be reproducible end-to-end.
@@ -190,7 +196,7 @@ Before writing any SQL model, state explicitly: "One row = one [entity] per [tim
 When the same data appears in multiple source files (e.g., CA Medicaid publishes full snapshots each month), dedup in silver with `QUALIFY ROW_NUMBER() OVER (PARTITION BY [natural key] ORDER BY _source_file DESC) = 1`. Bronze stays a true raw archive.
 
 ### 16. Every column needs a business label
-Every column in a silver, gold, or marts model needs a display name that the dive manifest can reference. Keep them short: `mlr_pct = 'Medical Loss Ratio'`, not the full formula. Column descriptions live in the dbt model config, not scattered across components.
+Every column in a staging, intermediate, or marts model needs a display name that the dive manifest can reference. Keep them short: `mlr_pct = 'Medical Loss Ratio'`, not the full formula. Column descriptions live in the dbt model config, not scattered across components.
 
 ---
 
@@ -222,7 +228,7 @@ Before scraping anything, map what combination of sources gives 100% coverage wi
 When joining time-series across sources, state what the join *means* in business terms. "2026 star ratings (released Oct 2025) → October 2025 enrollment" is a semantic decision: that's when analysts evaluate these ratings. Then verify: "Do we have October enrollment for the years we need?" If not, document the gap.
 
 ### 24. Inventory before action
-First step of any new work: check what scrapers, environments, groups, and dives already exist. `soria list`, `soria env list`, filesystem walk of `frontend/src/dives/`. Don't build what's already there. Don't write a new scraper when files are already downloaded.
+First step of any new work: check what scrapers, groups, and dives already exist. `mcp__soria__database_query "SELECT name FROM scrapers"`, `mcp__soria__group_manage(action="list", …)`, filesystem walk of `frontend/src/dives/`. Don't build what's already there. Don't write a new scraper when files are already downloaded.
 
 ### 25. Classify effort before committing
 - **Tier 1:** Clean CSVs with consistent schema → scrape + group + schema map + publish, no extraction needed.
@@ -289,25 +295,31 @@ needs; anything else is drift.
 
 ## Promotion & Rollback
 
-### 32. Diff-based promotion, never delete-all-insert-all
-Promotion computes the diff against the `cloned_at` snapshot and pushes only
-new/modified/deleted rows — it never wipes and re-inserts. An empty
-environment promoted over prod must be a no-op. This prevents the class of
-bugs where a code-only branch silently wipes production metadata.
+### 32. File-level promotion, never delete-all-insert-all
+Promotion is file-level: `mcp__soria__warehouse_promote(pr=…)` writes a
+`<!-- soria-promotion-manifest -->` YAML comment on the PR enumerating the
+`_file_id` rows that need to move from `soria_duckdb_staging` to
+`soria_duckdb_main`. On merge, `.github/workflows/promote.yml` reads the
+manifest and `DELETE + INSERT`s only those rows, never wipes. An empty PR
+promoted over prod is a no-op. Marts are handled separately by
+`.github/workflows/dbt-deploy.yml`, which runs `dbt run --target prod` on
+merge.
 
 ### 33. Production is git + CI, not a command
-There is no `soria promote`. The promotion flow is:
+There is no `mcp__soria__promote` tool. The promotion flow is:
 ```
-soria env diff → git push → gh pr create → CI runs dbt run + frontend deploy
+mcp__soria__warehouse_diff → mcp__soria__warehouse_promote (posts PR manifest)
+→ git push → gh pr create → CI (promote.yml + dbt-deploy.yml) runs on merge
 ```
 Promotion cannot be triggered imperatively. The PR is the audit trail.
 Merge is the gate. CI is the executor.
 
-### 34. `soria revert` is the safety net — use it, don't manually undo
-When a promote breaks something, `soria revert` deletes the promoted rows
-from the target branch. Never hand-write DELETE statements to undo a promote.
-Never force-push to roll back a PR. The revert command is the authoritative
-reversal — use it.
+### 34. Rollback is git revert or a soft-delete flip
+When a promote breaks something, revert the PR — CI re-runs against the
+reverted state and unwinds the change. For Postgres state, flip `deleted_at`
+via `mcp__soria__database_mutate` (respecting `SOFT_DELETE_CASCADES`).
+Never hand-write DELETE statements to undo a promote; never force-push to
+roll back a PR. The audit trail lives in `PipelineEvent` and in git log.
 
 ---
 

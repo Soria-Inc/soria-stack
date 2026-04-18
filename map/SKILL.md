@@ -1,10 +1,12 @@
 ---
 name: map
-version: 2.0.0
+version: 3.0.0
 description: |
   Value mapping — normalize raw values to canonical forms across eras and sources.
   Semantic reasoning about whether two values represent the same concept.
-  Drives the Soria platform through the `soria value` CLI — never MCP.
+  Drives the Soria platform through the `mcp__soria__value_manage` tool —
+  never a CLI. Writes land on shared Postgres; every mapping is soft-delete
+  reversible via `database_mutate` flipping `deleted_at`.
   Use when asked to "value map", "normalize values", "canonical", "map these values",
   or when /ingest is done and values need normalization before /dive.
   Proactively invoke this skill (do NOT map values ad-hoc) when /status shows
@@ -23,16 +25,9 @@ allowed-tools:
 mkdir -p ~/.soria-stack/artifacts
 echo "SKILL: map"
 echo "---"
-echo "Active environment:"
-soria env status 2>&1 || echo "  (soria CLI not authed — run /env first)"
-echo "---"
 echo "Checking for ingest artifacts..."
 ls -t ~/.soria-stack/artifacts/ingest-*.md 2>/dev/null | head -3
 ```
-
-**Before proceeding:** Read the `soria env status` output. If the active
-environment type is `prod`, refuse to write any value mappings unless the
-user explicitly acknowledges. For dev/preview envs, proceed normally.
 
 Read `ETHOS.md`. Key principles: #9 (historical names vs typos), #6 (don't
 mutate outputs).
@@ -61,11 +56,11 @@ You are a value mapping specialist. Your job is to normalize raw extracted value
 to canonical forms — deciding whether two different strings represent the same
 concept, a historical name change, a typo, or genuinely different things.
 
-**Where this state lives:** value mappings are stored in the env's Neon
-Postgres, not in git. You author them via `soria value index` / `soria value
-map` and they promote to prod via `soria env diff` + PR merge (diff-based
-promotion — #32). You don't need to commit anything in this skill unless
-you're also editing a downstream SQL model that reads the mapped values.
+**Where this state lives:** value mappings are stored in shared Postgres,
+not in git. You author them via `mcp__soria__value_manage` (index / map /
+unmap / rename / soft-delete). Mappings apply at warehouse publish time —
+once mapped, re-running `mcp__soria__warehouse_manage(action="publish")`
+propagates the canonical values into bronze.
 
 **This is semantic reasoning, not string matching.** "Drug Expense" vs "Drugs
 Expense" is a typo. "Gateway Health" vs "Highmark" is a corporate transition.
@@ -79,8 +74,9 @@ change that requires human judgment.
 Before mapping anything, understand the scope.
 
 For each group, check value mapping status:
-```bash
-soria value read --group {group_id}
+
+```
+mcp__soria__value_manage(action="read", group_id="{id}")
 ```
 
 Present a status table:
@@ -104,8 +100,9 @@ Focus on categorical columns with string values that vary across eras.
 ## Step 2: Index Values
 
 For columns that need mapping, index the distinct values:
-```bash
-soria value index --group {group_id} --column metric_name
+
+```
+mcp__soria__value_manage(action="index", group_id="{id}", column="metric_name")
 ```
 
 This extracts all unique values from the extracted files and stores them
@@ -186,9 +183,17 @@ map unmapped-to-unmapped and let the system handle it.
 Work column by column. For each column:
 
 1. **Do the easy wins first** — typos, casing, encoding. These can be batched:
-   ```bash
-   soria value map --group {group_id} --column metric_name \
-     --from "{raw_value}" --to "{canonical_value}"
+   ```
+   mcp__soria__value_manage(
+     action="map",
+     group_id="{id}",
+     column="metric_name",
+     mappings=[
+       {"from": "Drug Expense", "to": "Drugs Expense"},
+       {"from": "EBITDA Margin", "to": "Operating EBITDA Margin"},
+       ...
+     ]
+   )
    ```
 
 2. **Present methodology changes** — show the human what you'd map and why.
@@ -225,15 +230,15 @@ Kaufman Hall reports `ED Visits per Calendar Day`. Strata Decision Technology
 reports `ED Volume (Index)`. Same concept, different names and units.
 
 ### The Approach
-1. Create a reference mapping table (silver model) that maps source-specific
-   names to a shared canonical
+1. Create a reference mapping in the dbt intermediate layer that maps
+   source-specific names to a shared canonical
 2. Document the unit conversion if applicable
-3. Use the gold model to join sources using the canonical names
+3. Use the marts model to join sources using the canonical names
 
 ### Don't map at the value layer
-Cross-source mapping happens in SQL (gold models), not in `soria value map`.
-Each scraper keeps its own clean canonicals. The gold model does the semantic
-join.
+Cross-source mapping happens in SQL (dbt intermediate/marts), not in
+`value_manage`. Each scraper keeps its own clean canonicals. The
+intermediate model does the semantic join.
 
 ---
 
@@ -248,13 +253,17 @@ After all mappings are done:
    Only escalate if a column has unexpectedly high unmapped counts (>20%).
 2. **Ordering check:** Mapping must complete before warehouse publish. Value
    mappings are applied at publish time. If you published before mapping was
-   complete, re-publish with `--force`:
-   ```bash
-   soria warehouse publish {group_id} --force
+   complete, re-publish with `force=True`:
+   ```
+   mcp__soria__warehouse_manage(action="publish", group_id="{id}", force=True)
    ```
 3. **Sample check:** Query the warehouse with mapped values:
-   ```bash
-   soria warehouse query "SELECT DISTINCT metric_name FROM bronze.{table} ORDER BY 1"
+   ```
+   mcp__soria__warehouse_query(sql="
+     SELECT DISTINCT metric_name
+     FROM soria_duckdb_staging.bronze.{table}
+     ORDER BY 1
+   ")
    ```
 4. **Completeness check:** Do the mapped values cover all the time periods
    you need? Any gaps where a canonical has data in 2015-2019 but not 2020+?
@@ -284,9 +293,6 @@ approval before declaring done.
 cat > ~/.soria-stack/artifacts/map-$(date +%Y%m%d-%H%M%S).md << 'ARTIFACT'
 # Value Mapping Report: [Dataset Name]
 
-## Environment
-[Active soria env]
-
 ## Mapping Summary
 [Status table — columns, canonical counts, mapped/unmapped]
 
@@ -294,7 +300,7 @@ cat > ~/.soria-stack/artifacts/map-$(date +%Y%m%d-%H%M%S).md << 'ARTIFACT'
 [Ambiguous mappings that required human judgment, with rationale]
 
 ## Cross-Source Notes
-[If applicable — what needs to align in gold models]
+[If applicable — what needs to align in dbt intermediate/marts]
 
 ## Outcome
 Status: [DONE | DONE_WITH_CONCERNS | BLOCKED | NEEDS_CONTEXT]
@@ -310,9 +316,9 @@ ARTIFACT
    "Adjusted Discharges per Calendar Day" appears, don't just pick one.
    Flag it and let the human decide based on the analytical use case.
 
-2. **Mapping across scrapers via `soria value map`.** Cross-source alignment
-   happens in SQL gold models, not in the value mapping system. Each
-   scraper's values stay independent.
+2. **Mapping across scrapers via `value_manage`.** Cross-source alignment
+   happens in dbt intermediate/marts models, not in the value mapping system.
+   Each scraper's values stay independent.
 
 3. **Skipping the survey.** Don't start mapping column 1 without knowing
    how many columns need work. The survey prevents spending an hour on
@@ -325,8 +331,8 @@ ARTIFACT
    don't need canonicals. Only map categorical string columns.
 
 6. **Using the word "promote" for mapping operations.** "Canonical promotion"
-   (making a value canonical via `soria value map`) and "workspace promotion
-   to prod" (handled by `/promote`) are completely different operations. Say
+   (making a value canonical via `value_manage`) and "PR-gated promotion to
+   prod" (handled by `/promote`) are completely different operations. Say
    "make canonical" or "publish to warehouse" — never "promote" for mapping.
 
 7. **Treating residual unmapped values as errors.** After a complete mapping

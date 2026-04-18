@@ -1,27 +1,32 @@
 ---
 name: soria-stack
-version: 5.0.0
+version: 6.0.0
 description: |
   Data pipeline skills for Soria Analytics. Cognitive modes for upstream
   pipeline work (scrape → extract → value-map → publish) and for building
   dives (dbt marts + manifest + React component + DivesPage registration +
   rows in the shared verifications seed + methodology wired into the component).
-  All skills drive the Soria platform through the `soria` CLI — no MCP.
-  Sixteen skills: /env (environment management), /tools (verify CLI + env),
-  /status (what exists), /plan (ETVLR orchestrator), /ingest (scrape + extract
-  + publish), /map (value mapping), /parent-map (centralized parent company
-  resolution), /dive (build a dive end-to-end), /preview (render a dive in
-  chat), /verify (prove data correct), /dashboard-review (adversarial browser QA),
+  All skills drive the Soria platform through the `mcp__soria__*` MCP tool
+  namespace. SQL and React dives are authored locally in `frontend/src/dives/`
+  and shipped via `git push` + PR — there is no `soria` CLI.
+  Seventeen skills: /tools (verify MCP + local stack), /env (preflight; no
+  isolated envs), /status (what exists), /plan (ETVLR orchestrator),
+  /ingest (scrape + extract + publish), /map (value mapping), /parent-map
+  (centralized parent company resolution), /dive (build a dive end-to-end),
+  /preview (render a dive in chat), /verify (prove data correct),
+  /dashboard-review (adversarial browser QA against dev.soriaanalytics.com),
   /diagnose (failure triage), /ticket (file structured tickets mid-session),
-  /promote (git push → PR → CI), /newsroom (news pipeline ops),
-  /lessons (retrospective).
-  Suggest the right skill by stage: starting a session → /env then /tools;
+  /promote (warehouse_diff + warehouse_promote + PR + CI), /newsroom (news
+  pipeline ops), /lessons (retrospective), /browse (persistent headless
+  Chromium for verification).
+  Suggest the right skill by stage: starting a session → /tools;
   investigating what exists → /status; planning work → /plan; building a
   pipeline → /ingest; normalizing values → /map; resolving parent companies
   → /parent-map; building a dive or reviewing its SQL → /dive; proving data
-  correct → /verify; testing live dive UI → /dashboard-review; something broke →
-  /diagnose; filing a bug/feature ticket → /ticket; promoting to prod →
-  /promote; news pipeline → /newsroom; reviewing recent work → /lessons.
+  correct → /verify; testing live dive UI → /dashboard-review; something
+  broke → /diagnose; filing a bug/feature ticket → /ticket; promoting to
+  prod → /promote; news pipeline → /newsroom; reviewing recent work →
+  /lessons.
 allowed-tools:
   - Read
   - Bash
@@ -31,39 +36,34 @@ allowed-tools:
 
 ```bash
 mkdir -p ~/.soria-stack/artifacts
-echo "SoriaStack v5 loaded"
-echo "---"
-if command -v soria >/dev/null 2>&1; then
-  echo "Active environment:"
-  soria env status 2>&1 || echo "  (not authed — run /env)"
-else
-  echo "⚠️  soria CLI not found — run: uv tool install --from <repo>/cli soria-cli"
-fi
+echo "SoriaStack v6 loaded"
 echo "---"
 echo "Recent artifacts:"
 ls -t ~/.soria-stack/artifacts/*.md 2>/dev/null | head -5 || echo "  (none)"
 ```
 
-**Prod safety:** if `soria env status` reports the active env type is `prod`,
-no write-path skill (`/ingest`, `/map`, `/parent-map`, `/dive`, `/newsroom`)
-may run without explicit user acknowledgment. `/promote` is the only skill
-that expects prod in its flow (and it promotes TO prod from a dev branch,
-not FROM prod).
+**Reversibility, not isolation.** There are no isolated dev environments.
+Every MCP write lands on shared Postgres + `soria_duckdb_staging` — but
+every write is soft-delete reversible via `deleted_at` + the
+`PipelineEvent` audit trail. Promotion to `soria_duckdb_main` is PR-gated
+through `.github/workflows/promote.yml` and `dbt-deploy.yml`.
 
-Read `ETHOS.md` before any data pipeline work. All principles apply.
+Read `ETHOS.md` before any data pipeline work. See `MCP_TOOL_MAP.md` for
+the tool surface.
 
 # SoriaStack — Data Pipeline Skills
 
-Sixteen cognitive modes for data pipeline work. Each sets how to think, when
-to stop, and what to verify. All skills shell out to the `soria` CLI — never
-MCP tools.
+Seventeen cognitive modes for data pipeline work. Each sets how to think,
+when to stop, and what to verify. All skills drive the platform through
+the `mcp__soria__*` MCP tool namespace — never a `soria` CLI (it's been
+retired).
 
 ## Skill routing
 
 | If the user is... | Suggest |
 |-------------------|---------|
-| Starting a new session | `/env` then `/tools` |
-| Managing dev environments (branch / checkout / diff) | `/env` |
+| Starting a new session | `/tools` |
+| Sanity-checking the dev stack | `/env` |
 | Asking "what do we have for X?" | `/status` |
 | Saying "let's work on X" or "come up with a plan" | `/plan` |
 | Ready to scrape, extract, or publish | `/ingest` |
@@ -78,20 +78,19 @@ MCP tools.
 | Promoting to production (`git push` + PR) | `/promote` |
 | Working with the news pipeline | `/newsroom` |
 | Reviewing recent work for lessons | `/lessons` |
+| Needing a persistent browser (repro, recon) | `/browse` |
 
 ## The sequence
 
 ```
-/env (set environment — always first)
-   ↓
-/tools (verify CLI + active env)
+/tools (verify MCP reachable + local stack installed — always first)
    ↓
 /status → /plan → /ingest → /map → /dive → /verify → /promote
                           ↑              ↑
                    /parent-map      (verify rows live in
                    (parallel to /map) the shared seed,
                                      authored inside /dive)
-   + /dashboard-review (browser QA — after dive deploys)
+   + /dashboard-review (browser QA — after dive is in git)
    + /preview (render dive output in chat — any time)
    + /diagnose (enters from any phase when something breaks)
    + /ticket (side-quest — file a bug/feature ticket from any phase)
@@ -100,50 +99,55 @@ MCP tools.
 ```
 
 Each skill produces an artifact the next skill consumes.
-Don't skip steps — every pipeline that went poorly started with the AI building
-before looking.
+Don't skip steps — every pipeline that went poorly started with the AI
+building before looking.
 
 ## ETVLR Framework
 
 Every data concept follows this lifecycle:
 
 ```
-E (Extract)    → /ingest Gate 1: scrape files         (soria scraper run)
-T (Transform)  → /ingest Gates 2-4: group, schema,    (soria detect/extract/
-                 extract, validate                     validate/schema map)
-V (Value Map)  → /map: normalize values to canonicals (soria value index/map)
-L (Load)       → /ingest Gate 5: publish to warehouse (soria warehouse publish)
-R (Represent)  → /dive: dbt marts model + manifest +  (dbt + filesystem +
-                 TSX component + DivesPage entry +     soria warehouse query)
-                 verify seed rows + methodology
+E (Extract)    → /ingest Gate 1: scrape files         (mcp__soria__scraper_run)
+T (Transform)  → /ingest Gates 2-4: group, schema,    (mcp__soria__detection_run /
+                 extract, validate                     extraction_run / validation_run /
+                                                       schema_manage / schema_mappings)
+V (Value Map)  → /map: normalize values to canonicals (mcp__soria__value_manage)
+L (Load)       → /ingest Gate 5: publish to staging   (mcp__soria__warehouse_manage
+                                                       action="publish" → soria_duckdb_staging)
+R (Represent)  → /dive: dbt marts model + manifest +  (dbt run locally →
+                 TSX component + DivesPage entry +     mcp__soria__warehouse_query to
+                 verify seed rows + methodology        validate, then git push + PR)
 ```
 
 `/plan` orchestrates the phases. `/verify` runs after each.
 
-## Environment resolution
+## Reversibility model
 
-All write-path skills (`/ingest`, `/map`, `/parent-map`, `/dive`, `/promote`)
-require an active environment. Before any write op, confirm:
+All write-path skills (`/ingest`, `/map`, `/parent-map`, `/dive`,
+`/promote`) write directly to shared state — there are no isolated envs
+to "switch to." The safety net is:
 
-1. **User named one** — use it.
-2. **Obvious from context** (just created, continuing prior work) — use it.
-3. **None set** — suggest `/env` to list and switch.
-4. **Pointing at prod** — refuse writes unless the skill is `/promote` or the
-   user explicitly acknowledges prod.
-
-Environments are Neon branches plus MotherDuck clones plus git worktrees.
-`soria env branch` creates one, `soria env checkout` prints the worktree path
-for the shell wrapper to cd into, `soria env diff` shows what's changed vs
-prod, `soria env teardown` soft-deletes (7-day grace).
+1. **Soft-delete.** Every `Base` ORM model has `deleted_at` / `deleted_by`.
+   The `do_orm_execute` listener filters soft-deleted rows from normal
+   reads. `SOFT_DELETE_CASCADES` propagates the delete down required
+   relationships. Undo via `mcp__soria__database_mutate` setting
+   `deleted_at = NULL`.
+2. **Audit trail.** `PipelineEvent` captures every create/update/delete
+   with actor + timestamp. Read via `mcp__soria__pipeline_activity` /
+   `pipeline_history` / `pipeline_cascade`.
+3. **PR-gated warehouse promotion.** Prod MotherDuck
+   (`soria_duckdb_main`) is written to only by CI on PR merge. Staging
+   (`soria_duckdb_staging`) is the working surface.
 
 Read-only skills (`/status`, `/verify`, `/plan`, `/newsroom`, `/lessons`,
-`/preview`, `/ticket`) don't need an environment for writes but should still
-report the active env in output so the user knows which data they're looking at.
+`/preview`, `/ticket`) don't change state but should surface the current
+shared-state position in their output.
 
 ## Quick reference
 
 - **Principles** in `ETHOS.md` — the source of truth
+- **Tool surface** in `MCP_TOOL_MAP.md` — what every `mcp__soria__*` call does
 - **Artifacts** in `~/.soria-stack/artifacts/` — state passed between skills
 - **Gates** in every skill — hard stops where the human must review
 - **Completion status** — every skill ends with DONE / DONE_WITH_CONCERNS / BLOCKED / NEEDS_CONTEXT
-- **`soria --help`** — CLI surface reference (install: `uv tool install --from <repo>/cli soria-cli`)
+- **Local dev** — `make dev-https` runs vite at `https://dev.soriaanalytics.com` against the prod DBOS API + Clerk. No local backend is needed for dive work.

@@ -1,13 +1,14 @@
 ---
 name: dive
-version: 1.0.0
+version: 2.0.0
 description: |
   Build a dive end-to-end — dbt marts SQL + manifest + TSX component +
   DivesPage registration + rows in the shared verifications seed +
   methodology content wired into the dive component. Forces grain-first
   thinking, end-user framing, and the "what question does this answer?"
   conversation before any SQL. Includes data quality survey, SQL review
-  checklist, and verify-check authoring.
+  checklist, and verify-check authoring. Uses `mcp__soria__warehouse_query`
+  for data inspection; authors dbt SQL locally in `frontend/src/dives/dbt/`.
   Use when asked to "build a dive", "make a dashboard", "write the SQL",
   "create a pivot", "show me the data", "profile this table", "review the
   dive SQL", or "add verify checks".
@@ -33,24 +34,17 @@ allowed-tools:
 mkdir -p ~/.soria-stack/artifacts
 echo "SKILL: dive"
 echo "---"
-echo "Active environment:"
-soria env status 2>&1 || echo "  (soria CLI not authed — run /env first)"
-echo "---"
-echo "Git state:"
-git status --short 2>&1 | head -15 || echo "  (not in a worktree)"
+echo "Git state (soria-2):"
+git status --short 2>&1 | head -15 || echo "  (not in soria-2 checkout)"
 echo "---"
 echo "Checking for prior artifacts..."
 ls -t ~/.soria-stack/artifacts/ingest-*.md ~/.soria-stack/artifacts/map-*.md 2>/dev/null | head -3
 echo "---"
-echo "Checking dive filesystem layout..."
+echo "Dive filesystem layout:"
 ls frontend/src/dives/ 2>/dev/null | head -20
 ls frontend/src/dives/dbt/models/marts/ 2>/dev/null
 ls frontend/src/dives/dbt/seeds/ 2>/dev/null
 ```
-
-**Before proceeding:** Read the `soria env status` output. If the active
-environment type is `prod`, STOP — dives cannot be authored against prod.
-Switch to a dev env via `/env`.
 
 Read `ETHOS.md`. Key principles for /dive: #4, #5, #12, #13, #14, #16, #28, #29, #30, #31.
 
@@ -58,8 +52,13 @@ Read `ETHOS.md`. Key principles for /dive: #4, #5, #12, #13, #14, #16, #28, #29,
 names, schemas, value mapping status, and open questions. If no artifacts
 exist, check what tables are available:
 
-```bash
-soria warehouse query "SELECT table_schema, table_name FROM information_schema.tables WHERE table_schema IN ('bronze', 'silver', 'gold') ORDER BY 1, 2"
+```
+mcp__soria__warehouse_query(sql="
+  SELECT table_schema, table_name
+  FROM information_schema.tables
+  WHERE table_schema IN ('bronze', 'main_staging', 'main_intermediate', 'main_marts')
+  ORDER BY 1, 2
+")
 ```
 
 If /plan exists, check if it specified R-phase verification criteria.
@@ -95,7 +94,7 @@ You NEVER write SQL before answering three questions.
 ## Dive Architecture (what you're building)
 
 Every dive has **five pieces of your own code plus rows in a shared seed
-file**, all in the same env's worktree:
+file**, all in the `soria-2` git checkout:
 
 ```
 frontend/src/dives/dbt/models/marts/{domain}/{model}.sql    -- dbt marts SQL
@@ -121,12 +120,6 @@ The dive is **not done** until:
 - Methodology content is visible through the dive's DivePageHeader or
   MethodologyModal integration (see "Methodology content" below)
 
-**IMPORTANT — check main vs. your worktree:** The entire
-`frontend/src/dives/` ecosystem is new work. It exists in the `sticky-danger`
-branch but may or may not be merged to main yet. Before editing, run
-`ls frontend/src/dives/` — if the directory doesn't exist, you may be on
-main and need to branch from sticky-danger (ask the user).
-
 ## Git discipline
 
 Every file you touch in this skill is git-tracked. Commit in logical chunks:
@@ -140,26 +133,19 @@ Every file you touch in this skill is git-tracked. Commit in logical chunks:
 | After methodology content wired up | `dive({id}): add methodology content` |
 
 Run `git status --short` before each commit to see what you changed. Don't
-include unrelated edits in dive commits — keep the scope tight so
-`soria env diff` and PR review stay readable.
+include unrelated edits in dive commits — keep the scope tight so PR
+review stays readable.
 
 ## Iterative dev loop
 
-For iterating on a single dive in isolation (without running the full
-frontend app), sticky-danger has a `dives-preview/` scaffold — a minimal
-Vite app that renders one dive at a time against a local MotherDuck
-connection. If `dives-preview/` exists in your worktree, the loop is:
+The default flow is `make dev-https`: vite at `https://dev.soriaanalytics.com`
+proxies `/api` to the prod DBOS backend + Clerk. This points the frontend
+at **prod** MotherDuck data — so your new dive will show prod data until
+the PR merges and CI materializes your marts model to prod.
 
-```bash
-cd dives-preview
-cp .env.example .env        # populate MOTHERDUCK_TOKEN
-npm install && npm run dev
-# edit dive.tsx to re-export your target dive
-# open http://localhost:5173
-```
-
-Otherwise, use the full frontend dev server (`cd frontend && npm run dev`)
-and navigate to `/dives/{your-dive-id}`.
+For faster iteration on SQL before committing, use `/preview` — it queries
+`soria_duckdb_staging` via `mcp__soria__warehouse_query` and renders the
+dive as markdown tables in chat, without needing the frontend at all.
 
 ---
 
@@ -198,7 +184,7 @@ If the user asks for multiple dives, multiple marts models, or a complex
 structure — push back:
 - "Can this be 1 dive with filter controls slicing it instead of 5 separate dives?"
 - "Can this be 1 marts model with filter dimensions instead of 6 models?"
-- "Do we need a gold model here, or can silver feed marts directly?"
+- "Do we need an intermediate model here, or can staging feed marts directly?"
 
 Take a position. The simpler approach that produces correct data wins.
 
@@ -291,14 +277,14 @@ Present the grain design. This is where most pushback happens. Wait for approval
 ## Data Quality Survey (before writing SQL)
 
 Before writing SQL, get your eyes on the data. Run these 4 checks against the
-warehouse table you'll be modeling (using `soria warehouse query`):
+warehouse table you'll be modeling (using `mcp__soria__warehouse_query`):
 
 **Check 1: Schema & Row Counts**
-```bash
-soria warehouse query "DESCRIBE {table}"
-soria warehouse query "SELECT COUNT(*) FROM {table}"
-soria warehouse query "SELECT DATE_TRUNC('year', date_col), COUNT(*) FROM {table} GROUP BY 1 ORDER BY 1"
-soria warehouse query "SELECT * FROM {table} LIMIT 5"
+```
+mcp__soria__warehouse_query(sql="DESCRIBE {table}")
+mcp__soria__warehouse_query(sql="SELECT COUNT(*) FROM {table}")
+mcp__soria__warehouse_query(sql="SELECT DATE_TRUNC('year', date_col), COUNT(*) FROM {table} GROUP BY 1 ORDER BY 1")
+mcp__soria__warehouse_query(sql="SELECT * FROM {table} LIMIT 5")
 ```
 Report: column inventory, time range, shape.
 
@@ -321,18 +307,18 @@ Skip this step if you already know the data well from prior sessions.
 
 ## The dbt Model Stack
 
-Dive SQL lives in one dbt project (`soria_dives`) that reads from the
-upstream platform warehouse:
+Dive SQL lives in one dbt project (`soria_dives`) that reads bronze tables
+published by the ingestion pipeline. There is no upstream SQL transformation
+layer — bronze is raw, and staging/intermediate/marts are the dbt layers.
 
 ```
-(upstream: soria platform's SQLMesh publishes bronze → silver → gold
- in soria_duckdb)
+(ingest pipeline publishes → soria_duckdb_staging.bronze.*)
                 ↓
 frontend/src/dives/dbt/    (project: soria_dives)
   dbt_project.yml          → schemas: staging / intermediate / marts
-  profiles.yml             → targets: dev, prod, main (all use MOTHERDUCK_TOKEN)
+  profiles.yml             → target: staging (reads MOTHERDUCK_STAGING_DATABASE)
   models/
-    staging/               → views (optional, for dive-local pre-processing)
+    staging/               → views (CAST + clean + unpivot)
     intermediate/          → views (joins across staging)
     marts/
       {domain}/            → tables (the dive's main query target)
@@ -345,30 +331,35 @@ frontend/src/dives/dbt/    (project: soria_dives)
 `{target_default_schema}_{config_schema}`. For duckdb profiles the default
 schema is `main`, so `+schema: marts` produces `main_marts`. Fully qualified:
 
-- `dbt run --target dev` → `soria_duckdb.main_marts.{model}`
-- `dbt run --target main` → `soria_duckdb_main.main_marts.{model}`
-- `dbt run --target prod` → `soria_duckdb.main_marts.{model}`
+- Local `dbt run` → `soria_duckdb_staging.main_marts.{model}`
+- CI `dbt run --target prod` (on PR merge) → `soria_duckdb_main.main_marts.{model}`
 
-The manifest points at the full path, e.g.
-`table: "soria_duckdb_main.main_marts.naic_national_kpis_by_company"`.
-Match the target your dev env uses — check `profiles.yml` to confirm.
+There is no `prod` target in the committed `profiles.yml` — CI injects it
+at deploy time so you can't accidentally `dbt run --target prod` locally.
 
-### Upstream sources (silver / gold in soria_duckdb)
-- One row per source table, declared in `dbt_project.yml` sources block
-- Schema: `soria_duckdb.silver` or `soria_duckdb.gold`
-- Don't re-run upstream transforms — they're already built by the platform
+The manifest points at `soria_duckdb_main.main_marts.{model}` (prod) — the
+frontend in `make dev-https` mode is pointed at the prod DBOS API which
+queries prod MotherDuck. To iterate, use `/preview` to query staging via
+`mcp__soria__warehouse_query`.
+
+### Bronze sources
+- Published by `mcp__soria__warehouse_manage(action="publish")`
+- Schema: `soria_duckdb_staging.bronze.{table}`
+- Declared in `dbt_project.yml` sources block
+- Don't hand-insert bronze — use the ingest pipeline
 
 ### staging/ (dive project)
-- Optional — only if you need dive-specific pre-processing before intermediate
 - `CAST` and rename as needed
-- `ref('source_name')` to reference upstream sources
-- One staging model per upstream source
+- Unpivot wide metric columns to long format (Principle #3)
+- `ref('bronze_source')` via sources block
+- One staging model per bronze table
+- No joins in staging (Principle #4)
 
 ### intermediate/ (dive project)
 - Joins across staging
 - Business logic specific to this dive
 - `ref('stg_...')` to pull from staging
-- No direct source references
+- No direct bronze references
 
 ### marts/{domain}/ (dive project)
 - Dashboard-ready output
@@ -509,9 +500,12 @@ export default defineDiveManifest({
 **Rules:**
 - Explicit `columns` list — drops payload size vs `SELECT *`
 - Filter values must exist in the data — mismatches cause the "dive shows
-  nothing" failure. Verify with:
-  ```bash
-  soria warehouse query "SELECT DISTINCT segment FROM soria_duckdb_main.main_marts.{model}"
+  nothing" failure. Verify against staging (where your local `dbt run` just
+  landed):
+  ```
+  mcp__soria__warehouse_query(sql="
+    SELECT DISTINCT segment FROM soria_duckdb_staging.main_marts.{model}
+  ")
   ```
 - `prefetch: true` on filters the user typically cycles through (so the
   session cache is warm)
@@ -657,60 +651,46 @@ const DIVES: DiveEntry[] = [
 
 ## Build + Test
 
-Run dbt in the env's worktree:
+Run dbt locally (writes to `soria_duckdb_staging`):
 
 ```bash
 cd frontend/src/dives/dbt
-dbt run --target dev --select {model}
-dbt test --target dev --select {model}
-dbt seed --target dev --select verifications     # refresh verify checks
+../../../../.venv/bin/dbt run --select {model}
+../../../../.venv/bin/dbt test --select {model}
+../../../../.venv/bin/dbt seed --select verifications   # refresh verify checks
 ```
 
-Verify the marts table landed:
+Or from the repo root: `make dbt-docs` rebuilds the manifest so the
+frontend's lineage view picks up changes.
 
-```bash
-soria warehouse query "SELECT COUNT(*) FROM soria_duckdb_main.main_marts.{model}"
+Verify the marts table landed in staging:
+
+```
+mcp__soria__warehouse_query(sql="SELECT COUNT(*) FROM soria_duckdb_staging.main_marts.{model}")
 ```
 
 Verify your verify check rows landed in the shared table:
 
-```bash
-soria warehouse query "
-SELECT COUNT(*) FROM soria_duckdb_main.main.verifications
-WHERE model = '{your_marts_model}'
-"
+```
+mcp__soria__warehouse_query(sql="
+  SELECT COUNT(*) FROM soria_duckdb_staging.main.verifications
+  WHERE model = '{your_marts_model}'
+")
 ```
 
-### vite-dbt-sync — sync dbt artifacts into the frontend
+### Running the dive in a browser
 
-The frontend reads `dbt/target/manifest.json` and `run_results.json` as
-static assets from `public/` (e.g. for the `DbtLineageFlow` component and
-the `last_dbt_run` timestamps shown in verify tooltips). This sync happens
-automatically via the `vite-dbt-sync.ts` Vite plugin when the dev server
-is running — whenever dbt writes a new `manifest.json` or `run_results.json`,
-the plugin copies them to `public/dbt-docs/` and `public/`.
+Default flow is `make dev-https` — vite at `https://dev.soriaanalytics.com`
+proxied to prod DBOS. Note this shows **prod** data, so new marts models
+won't appear until the PR merges. For local validation of your SQL
+against staging, use `/preview` (reads staging via MCP and renders pivot
+tables in chat).
 
-**What this means for you:**
-- If the dev server isn't running, the frontend will show stale `last_dbt_run`
-  timestamps. Start it (`cd frontend && npm run dev`) before checking the
-  VerifyModal.
-- If you ran `dbt run` but the frontend doesn't reflect the new data, the
-  vite plugin may not have synced yet — a hard reload usually fixes it.
-- For prod, the CI pipeline runs `dbt run --target prod` and the built
-  frontend bundles the synced artifacts.
-
-Run a sample preview via `/preview` or:
-
-```bash
-soria warehouse query "SELECT * FROM soria_duckdb_main.main_marts.{model} LIMIT 5"
-```
-
-Run a local dev preview:
-
-```bash
-cd frontend && npm run dev
-# navigate to /dives/{dive-id}
-```
+The `vite-dbt-sync.ts` Vite plugin copies `dbt/target/manifest.json` +
+`run_results.json` into `frontend/public/dbt-docs/` on change — this is
+what powers the `DbtLineageFlow` component and the `last_dbt_run`
+timestamps in `VerifyTooltip`. If you run `dbt run` while `make dev-https`
+is active, the sync is automatic.
 
 ---
 
@@ -722,7 +702,7 @@ Before committing a dive's SQL:
    `flt_`, `clc_`, `agg_`, `wnd_`, `ded_`, `jnd_`, `pvt_`), no over-splitting
    or under-splitting.
 2. **Conventions** — Column descriptions in the dbt `_models.yml`, no joins
-   in silver, ratios after aggregation, `QUALIFY ROW_NUMBER()` for dedup.
+   in staging, ratios after aggregation, `QUALIFY ROW_NUMBER()` for dedup.
 3. **No dead code** — No unreferenced CTEs, unselected columns, no-op WHEREs.
 4. **Grain matches row dimension** — no finer keys than what the manifest
    exposes as row dimensions
@@ -768,17 +748,17 @@ Pick a new unique `id` (the column is bigint — max(id) + 1). Use NULL
 
 ```bash
 cd frontend/src/dives/dbt
-dbt seed --target dev --select verifications
+../../../../.venv/bin/dbt seed --select verifications
 ```
 
 Then query the materialized seed to confirm your rows landed:
 
-```bash
-soria warehouse query "
-SELECT COUNT(*), MIN(id), MAX(id)
-FROM soria_duckdb_main.main.verifications
-WHERE model = 'your_marts_model'
-"
+```
+mcp__soria__warehouse_query(sql="
+  SELECT COUNT(*), MIN(id), MAX(id)
+  FROM soria_duckdb_staging.main.verifications
+  WHERE model = 'your_marts_model'
+")
 ```
 
 ### Investigating failures
@@ -809,9 +789,6 @@ At the end of a dive session, write a dive spec:
 ```bash
 cat > ~/.soria-stack/artifacts/dive-$(date +%Y%m%d-%H%M%S).md << 'ARTIFACT'
 # Dive Spec: [Dive Name]
-
-## Environment
-[Active soria env]
 
 ## Three Questions
 [Question, audience, visualization]
@@ -860,7 +837,7 @@ This artifact is consumed by `/verify` when proving the dive correct and by
    a business label. DivesGrid reads them for headers and the MethodologyModal
    references them.
 
-5. **Joins across sources in staging.** Staging is one-source-in, one-source-out.
+5. **Joins across sources in staging.** Staging is one-bronze-in, one-staging-out.
    Joins happen in intermediate or marts.
 
 6. **Averaging ratios.** `AVG(margin_pct)` gives equal weight to 10-bed and

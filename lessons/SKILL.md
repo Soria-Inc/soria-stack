@@ -23,9 +23,6 @@ allowed-tools:
 mkdir -p ~/.soria-stack/artifacts
 echo "SKILL: lessons"
 echo "---"
-echo "Active environment:"
-soria env status 2>&1 || echo "  (soria CLI not authed — read-only skill, continue)"
-echo "---"
 echo "Recent artifacts (last 20):"
 ls -t ~/.soria-stack/artifacts/*.md 2>/dev/null | head -20
 echo "---"
@@ -211,8 +208,8 @@ RETRO REPORT: [Date Range]
 ## Proposed Skill Changes
 [Each proposal with evidence]
 
-## CLI Gaps Identified
-[soria CLI commands skills need that don't exist]
+## MCP Gaps Identified
+[`mcp__soria__*` tools skills need that don't exist]
 
 ## Open Questions
 [Unresolved decisions for the team]
@@ -249,9 +246,6 @@ Evidence from [N] sessions:
 cat > ~/.soria-stack/artifacts/lessons-$(date +%Y%m%d-%H%M%S).md << 'ARTIFACT'
 # Retro Report: [Date Range]
 
-## Environment
-[Active soria env]
-
 ## Sessions Reviewed
 [List of artifacts and mempalace hits analyzed]
 
@@ -264,8 +258,8 @@ cat > ~/.soria-stack/artifacts/lessons-$(date +%Y%m%d-%H%M%S).md << 'ARTIFACT'
 ## Changes Deferred
 [What was proposed but not approved, with reasoning]
 
-## CLI Gaps
-[soria commands skills needed but couldn't call]
+## MCP Gaps
+[`mcp__soria__*` tools skills needed but couldn't call]
 
 ## Outcome
 Status: DONE

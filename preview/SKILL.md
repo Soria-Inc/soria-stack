@@ -1,11 +1,13 @@
 ---
 name: preview
-version: 3.0.0
+version: 4.0.0
 description: |
   Render a dive as markdown tables in chat — simulating the frontend experience
   without opening a browser. Reads the dive manifest, builds SQL from it,
-  queries MotherDuck via `soria warehouse query`, and formats the output as
-  pivot tables matching what the dive displays.
+  queries MotherDuck via `mcp__soria__warehouse_query`, and formats the
+  output as pivot tables matching what the dive displays. Queries
+  `soria_duckdb_staging` by default (where local `dbt run` landed) so you
+  see your uncommitted work.
   Read-only. Use when asked to "show me the dive", "what does this look like",
   "preview this", "show me slices", or "review the dive output".
   Use after /dive or /verify to inspect what was built. (soria-stack)
@@ -22,13 +24,9 @@ allowed-tools:
 ```bash
 mkdir -p ~/.soria-stack/artifacts
 echo "SKILL: preview"
-echo "---"
-echo "Active environment:"
-soria env status 2>&1 || echo "  (soria CLI not authed — run /env first)"
 ```
 
-Read `ETHOS.md`. Preview is read-only — no writes, no acknowledgment needed,
-but always report the active env so the user knows which data they're seeing.
+Read `ETHOS.md`. Preview is read-only — no writes.
 
 ## Skill routing (always active)
 
@@ -42,8 +40,12 @@ but always report the active env so the user knows which data they're seeing.
 # /preview — "Show me the dive"
 
 **Read-only.** Read the dive manifest, build SQL from its `{table, columns,
-where, filters}`, query MotherDuck via `soria warehouse query`, format as
-markdown tables matching how the dive displays in the browser.
+where, filters}`, query MotherDuck via `mcp__soria__warehouse_query`,
+format as markdown tables matching how the dive displays in the browser.
+
+The manifest points at `soria_duckdb_main.main_marts.*` (prod). For
+local iteration, rewrite the query to `soria_duckdb_staging.main_marts.*`
+so you see what your local `dbt run` just landed. Note this in the output.
 
 Do not build, fix, or modify anything.
 
@@ -56,8 +58,8 @@ Every dive preview follows this structure, in this order:
 ```
 ## Dive: [Name] (`{id}`)
 
-**Environment:** [active env]
-**Marts model:** `soria_duckdb_main.main_marts.{model}`
+**Marts model:** `soria_duckdb_staging.main_marts.{model}` (local)
+**Manifest points at:** `soria_duckdb_main.main_marts.{model}` (prod, post-merge)
 
 **What the user sees:** [1-line grain description from manifest or dive component]
 
@@ -81,7 +83,7 @@ Every dive preview follows this structure, in this order:
 - [specific issue with evidence, or "None found"]
 
 **Methodology:** [1-line summary — inspect the dive component for where methodology content lives; report "missing" if not surfaced]
-**Verify:** [count of rows in `soria_duckdb_main.main.verifications` WHERE model = '{marts_model}', or "missing" if 0]
+**Verify:** [count of rows in `soria_duckdb_staging.main.verifications` WHERE model = '{marts_model}', or "missing" if 0]
 
 **Verdict:** [1-2 sentences — what's strong, what's weak, usable or not?]
 ```
@@ -127,8 +129,8 @@ LIMIT 50
 
 ### 4. Query and render
 
-```bash
-soria warehouse query "{built SQL}"
+```
+mcp__soria__warehouse_query(sql="{built SQL, rewriting table to soria_duckdb_staging.main_marts.*}")
 ```
 
 Format as a pivot table matching how the dive displays it — not a raw row
@@ -138,9 +140,8 @@ dump. Time-series → time as columns. Single snapshot → entities as rows.
 
 After the default view, render 1-2 slices that exercise the manifest filters:
 
-```bash
-# Example: swap segment filter
-soria warehouse query "SELECT ... WHERE segment = 'PDP' ORDER BY ... LIMIT 50"
+```
+mcp__soria__warehouse_query(sql="SELECT ... WHERE segment = 'PDP' ORDER BY ... LIMIT 50")
 ```
 
 ### 6. Check methodology surface + verify check count
@@ -148,12 +149,14 @@ soria warehouse query "SELECT ... WHERE segment = 'PDP' ORDER BY ... LIMIT 50"
 ```bash
 # Methodology — the pattern varies; check the dive component for how it's wired
 grep -l "methodology\|Methodology" frontend/src/dives/{dive-id}.tsx 2>/dev/null
+```
 
+```
 # Verify check count for this dive's marts model
-soria warehouse query "
-SELECT COUNT(*) FROM soria_duckdb_main.main.verifications
-WHERE model = '{marts_model_name}'
-"
+mcp__soria__warehouse_query(sql="
+  SELECT COUNT(*) FROM soria_duckdb_staging.main.verifications
+  WHERE model = '{marts_model_name}'
+")
 ```
 
 Missing methodology surface or zero verify checks is a shipping blocker
@@ -208,5 +211,6 @@ include 'Dual' rows).
   assumptions about the dive
 - **Ignoring missing methodology/verify meta** — a dive without those is
   incomplete; flag it in the verdict
-- **Writing to the warehouse** — this skill is read-only. No `soria warehouse
-  publish`, no `dbt run`, no manifest edits. Report drift, don't fix it.
+- **Writing to the warehouse** — this skill is read-only. No
+  `mcp__soria__warehouse_manage`, no `dbt run`, no manifest edits. Report
+  drift, don't fix it.

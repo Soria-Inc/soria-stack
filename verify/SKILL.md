@@ -1,6 +1,6 @@
 ---
 name: verify
-version: 6.0.0
+version: 7.0.0
 description: |
   Prove data is correct through evidence, not assertions. Centers on verify
   checks — rows in a shared dbt seed (`verifications.csv`, filtered per-dive
@@ -9,8 +9,9 @@ description: |
   comparing actual marts values against the bounds in the verifications table.
   Three modes: Pipeline (extraction vs source), Model (trace through layers),
   Verify Checks (investigate cell-level bound failures, gap analysis).
-  Drives the Soria platform through `soria warehouse query`, `dbt seed`, and
-  `dbt test`. Never says "looks good" without showing evidence.
+  Drives the Soria platform through `mcp__soria__warehouse_query` /
+  `file_query`, plus local `dbt seed` and `dbt test`. Never says "looks good"
+  without showing evidence.
   Use when asked to "verify this", "is this data correct", "check the
   pipeline", "prove it", "validate the dive", or "what does this data look
   like". Proactively invoke this skill after any /ingest gate, after /dive,
@@ -30,9 +31,6 @@ allowed-tools:
 ```bash
 mkdir -p ~/.soria-stack/artifacts
 echo "SKILL: verify"
-echo "---"
-echo "Active environment:"
-soria env status 2>&1 || echo "  (soria CLI not authed — read-only skill, continue)"
 echo "---"
 echo "Checking for prior artifacts..."
 ls -t ~/.soria-stack/artifacts/plan-*.md ~/.soria-stack/artifacts/ingest-*.md ~/.soria-stack/artifacts/dive-*.md 2>/dev/null | head -5
@@ -73,7 +71,7 @@ if Tier 2 or 3 are possible.
 
 Verify checks are rows in a **shared dbt seed** at
 `frontend/src/dives/dbt/seeds/verifications.csv`, materialized to
-`soria_duckdb_main.main.verifications`. Every dive's checks are rows in
+`soria_duckdb_staging.main.verifications`. Every dive's checks are rows in
 this one table, filtered by the `model` column = dbt marts model name.
 
 This is the durable, automated version of what Tier 2 and Tier 3 checks
@@ -85,9 +83,11 @@ filtered rows and surfaces mismatches via `VerifyTooltip` on every grid cell.
 ```
 frontend/src/dives/dbt/seeds/verifications.csv       -- git-tracked seed CSV
   ↓
-  dbt seed --target dev --select verifications
+  dbt seed --select verifications          (local → staging MD)
   ↓
-soria_duckdb_main.main.verifications                 -- materialized table
+soria_duckdb_staging.main.verifications              -- materialized table
+  ↓
+  (CI on PR merge promotes to soria_duckdb_main.main.verifications)
   ↓
 useDiveVerifications("naic_national_kpis_by_company")   -- per-dive hook
   ↓
@@ -143,15 +143,15 @@ window functions, not storing pre-aggregated results).
 
 Before running any mode, check how many verify checks exist for this dive:
 
-```bash
-# Count rows by model
-soria warehouse query "
-SELECT model, COUNT(*) AS checks, COUNT(DISTINCT metric) AS metrics,
-  COUNT(DISTINCT source) AS sources
-FROM soria_duckdb_main.main.verifications
-WHERE model = '{your_marts_model}'
-GROUP BY 1
-"
+```
+mcp__soria__warehouse_query(sql="
+  SELECT model, COUNT(*) AS checks,
+         COUNT(DISTINCT metric) AS metrics,
+         COUNT(DISTINCT source) AS sources
+  FROM soria_duckdb_staging.main.verifications
+  WHERE model = '{your_marts_model}'
+  GROUP BY 1
+")
 ```
 
 Three outcomes:
@@ -219,16 +219,19 @@ the extraction pipeline correctly pulled data from source files.
 ### Steps
 
 1. **Select 3 sample files** across eras (oldest, newest, mid-history):
-   ```bash
-   soria file list --group {group_id} --limit 50
+   ```
+   mcp__soria__file_query(group_id="{id}", limit=50)
    ```
 
 2. **For each file, run Tier 1 — Spot Checks:**
-   - Open the source document (`soria file open {file_id}` for PDFs/Excel)
+   - Open the source document (`mcp__soria__file_query(file_id="{id}", open=True)` returns a presigned URL for PDFs/Excel)
    - Pick 10 specific values spread across different columns and rows
    - Find the same values in the extracted output:
-     ```bash
-     soria warehouse query "SELECT * FROM bronze.{table} WHERE _source_file LIKE '%{filename}%' LIMIT 20"
+     ```
+     mcp__soria__warehouse_query(sql="
+       SELECT * FROM soria_duckdb_staging.bronze.{table}
+       WHERE _source_file LIKE '%{filename}%' LIMIT 20
+     ")
      ```
    - Show the comparison as a table with match/mismatch per value
 
@@ -245,7 +248,6 @@ the extraction pipeline correctly pulled data from source files.
 ### Output
 ```
 Pipeline Verification: cms_hospital_cost_report
-Environment: prickle-bottle
 ├── Tier 1 (Spot Checks): 30/30 values match across 3 files
 ├── Tier 2 (Sum Checks): total = components +/- 0.1% across 14 years
 └── Tier 3 (Derived): operating_margin matches CMS benchmarks +/- 0.5%
@@ -258,7 +260,7 @@ Confidence: HIGH — all three tiers pass
 ## Mode 2: Model Verify
 
 **When to use:** After building a dive (`/dive`). Verifies that data flows
-correctly through bronze → silver → gold → marts.
+correctly through bronze → staging → intermediate → marts.
 
 ### Steps
 
@@ -271,32 +273,32 @@ correctly through bronze → silver → gold → marts.
 
    | Layer | Table | Value | Correct? |
    |-------|-------|-------|----------|
-   | Bronze | bronze.unh_10k_financials | 371622 (millions) | ✅ |
-   | Silver | silver.stg_unh_financials | metric='total_revenue', value=371622 | ✅ |
-   | Gold | gold.insurer_financials | total_revenue=371622000000 (scaled) | ✅ |
-   | Marts | soria_duckdb_main.main_marts.insurer_kpi | revenue='$371.6B' | ✅ |
+   | Bronze | soria_duckdb_staging.bronze.unh_10k_financials | 371622 (millions) | ✅ |
+   | Staging | soria_duckdb_staging.main_staging.stg_unh_financials | metric='total_revenue', value=371622 | ✅ |
+   | Intermediate | soria_duckdb_staging.main_intermediate.int_insurer_financials | total_revenue=371622000000 (scaled) | ✅ |
+   | Marts | soria_duckdb_staging.main_marts.insurer_kpi | revenue='$371.6B' | ✅ |
    ```
 
-3. **Run `dbt run` and `dbt test` for the dive's models:**
+3. **Run `dbt run` and `dbt test` locally:**
    ```bash
    cd frontend/src/dives/dbt
-   dbt run --target dev --select {model}+
-   dbt test --target dev --select {model}+
+   ../../../../.venv/bin/dbt run --select {model}+
+   ../../../../.venv/bin/dbt test --select {model}+
    ```
 
    `+` includes downstream models. `+{model}` includes upstream. `+{model}+`
    includes both.
 
 4. **Check for fan-out or fan-in bugs:**
-   - Does joining in gold multiply rows?
-   - Does dedup in silver drop too many rows?
+   - Does joining in intermediate multiply rows?
+   - Does dedup in staging drop too many rows?
    - Does aggregation in marts collapse the right dimensions?
 
 5. **Verify ratio computation:**
    - Confirm ratios are computed AFTER aggregation, not averaged
    - Test with a known example
 
-6. **Check temporal alignment in gold:**
+6. **Check temporal alignment in intermediate:**
    - Are the right time periods joined?
 
 ---
@@ -316,32 +318,32 @@ verify checks exist, start here. If they don't, flag the gap and invoke
 1. **Pull all checks for this dive's model and join against the actual data
    to find mismatches:**
 
-   ```bash
-   soria warehouse query "
-   WITH checks AS (
-     SELECT * FROM soria_duckdb_main.main.verifications
-     WHERE model = '{your_marts_model}'
-   ),
-   actual AS (
-     SELECT parent_company, lob, quarter, metric, value
-     FROM soria_duckdb_main.main_marts.{your_marts_model}_long_format  -- if available
-   )
-   SELECT c.id, c.description, c.parent_company, c.lob, c.quarter, c.metric,
-     c.min_value, c.max_value, a.value,
-     CASE
-       WHEN a.value BETWEEN c.min_value AND c.max_value THEN 'PASS'
-       WHEN a.value IS NULL THEN 'NO_DATA'
-       ELSE 'FAIL'
-     END AS status,
-     c.source, c.source_url
-   FROM checks c
-   LEFT JOIN actual a
-     ON (c.parent_company IS NULL OR c.parent_company = a.parent_company)
-    AND (c.lob IS NULL OR c.lob = a.lob)
-    AND (c.quarter IS NULL OR c.quarter = a.quarter)
-    AND (c.metric IS NULL OR c.metric = a.metric)
-   ORDER BY status, c.id
-   "
+   ```
+   mcp__soria__warehouse_query(sql="
+     WITH checks AS (
+       SELECT * FROM soria_duckdb_staging.main.verifications
+       WHERE model = '{your_marts_model}'
+     ),
+     actual AS (
+       SELECT parent_company, lob, quarter, metric, value
+       FROM soria_duckdb_staging.main_marts.{your_marts_model}_long_format  -- if available
+     )
+     SELECT c.id, c.description, c.parent_company, c.lob, c.quarter, c.metric,
+       c.min_value, c.max_value, a.value,
+       CASE
+         WHEN a.value BETWEEN c.min_value AND c.max_value THEN 'PASS'
+         WHEN a.value IS NULL THEN 'NO_DATA'
+         ELSE 'FAIL'
+       END AS status,
+       c.source, c.source_url
+     FROM checks c
+     LEFT JOIN actual a
+       ON (c.parent_company IS NULL OR c.parent_company = a.parent_company)
+      AND (c.lob IS NULL OR c.lob = a.lob)
+      AND (c.quarter IS NULL OR c.quarter = a.quarter)
+      AND (c.metric IS NULL OR c.metric = a.metric)
+     ORDER BY status, c.id
+   ")
    ```
 
    Adjust the `actual` CTE to match the shape of your marts model — some
@@ -403,7 +405,6 @@ verify checks exist, start here. If they don't, flag the gap and invoke
 
 ```
 Verify Checks: ma-enrollment dive (model = ma_enrollment_by_company)
-Environment: prickle-bottle
 
 ├── Check rows: 32 (within bounds: 29, failing: 3)
 ├── Failing rows:
@@ -441,7 +442,7 @@ Invoke `/diagnose` for:
 - Missing data (may be a Durable Object event relay issue)
 - Dive load failures (may be manifest/data drift, WASM cold start, or PG proxy timeout)
 - Stale `last_dbt_run` in the VerifyModal (vite-dbt-sync plugin hasn't run
-  — start the frontend dev server)
+  — make sure `make dev-https` is running and rerun `dbt run`)
 
 ---
 
@@ -450,9 +451,6 @@ Invoke `/diagnose` for:
 ```bash
 cat > ~/.soria-stack/artifacts/verify-$(date +%Y%m%d-%H%M%S).md << 'ARTIFACT'
 # Verification Scorecard: [Dive/Model Name]
-
-## Environment
-[Active soria env]
 
 ## Mode
 [Pipeline / Model / Verify Checks]

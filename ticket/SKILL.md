@@ -24,9 +24,6 @@ allowed-tools:
 mkdir -p ~/.soria-stack/artifacts
 echo "SKILL: ticket"
 echo "---"
-echo "Active environment:"
-soria env status 2>&1 || echo "  (soria CLI not authed — read-only skill, continue)"
-echo "---"
 echo "Recent ticket artifacts:"
 ls -t ~/.soria-stack/artifacts/ticket-*.md 2>/dev/null | head -3 || echo "  (none)"
 ```
@@ -62,11 +59,11 @@ in the conversation — don't ask the user to repeat it.
 
 ### From the current session
 - **What happened?** The error, unexpected behavior, or missing capability.
-- **What was the user trying to do?** The pipeline stage, CLI invocation, and parameters.
+- **What was the user trying to do?** The pipeline stage, MCP tool called, and parameters.
 - **What was the workaround?** If they found one, capture it.
 - **What's the root cause hypothesis?** If `/diagnose` ran, use its findings.
-- **Active environment?** Include the output of `soria env status` — which
-  env the bug was seen in matters for reproduction.
+- **Recent pipeline activity?** From `mcp__soria__pipeline_activity` — who
+  touched what recently, for reproduction.
 
 ### From Linear (required — always check)
 ```
@@ -142,14 +139,9 @@ Let them override before filing.
 
 [1-2 sentences: what's broken and what it affects]
 
-## Environment
-
-Active env: [from soria env status]
-soria CLI version: [soria --version]
-
 ## Reproduction
 
-1. [Exact CLI invocation or sequence that triggers the issue]
+1. [Exact MCP tool call or sequence that triggers the issue]
 2. [Parameters used]
 3. [What was returned — quote the actual error or misleading response]
 
@@ -212,9 +204,9 @@ mcp__linear__save_issue(
 ```
 
 **Title conventions:**
-- `[soria CLI]: env diff doesn't detect data changes in bronze`
+- `[MCP]: warehouse_diff returns empty when staging matches prod`
 - `[Extraction]: LLM truncates output on PDFs > 20 pages`
-- `[Warehouse]: soria warehouse materialize silently no-ops on VIEW/TABLE conflict`
+- `[Warehouse]: warehouse_manage(publish) silently no-ops on schema conflict`
 - `[Dive]: manifest filter values out of sync with marts data`
 - `[DBOS Cloud]: PG wire protocol 30s timeout on complex dive queries`
 - `[Event relay]: Durable Object drops notify events under load`
@@ -231,8 +223,7 @@ mcp__linear__save_issue(
 cat > ~/.soria-stack/artifacts/ticket-$(date +%Y%m%d-%H%M%S).md << 'ARTIFACT'
 # Ticket Filed: [ISSUE-ID] — [Title]
 
-Environment: [active soria env]
-Type: [CLI bug | Data quality | Silent failure | Dive breakage | Feature | Performance | Schema | Infrastructure | DX]
+Type: [MCP bug | Data quality | Silent failure | Dive breakage | Feature | Performance | Schema | Infrastructure | DX]
 Priority: [P1-P4]
 Related: [linked ticket IDs or "none"]
 Duplicate check: [CLEAR | DUPLICATE OF XXX | REGRESSION OF XXX | AGENT ALREADY HANDLING]

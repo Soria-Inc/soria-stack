@@ -1,13 +1,13 @@
 ---
 name: newsroom
-version: 3.0.0
+version: 4.0.0
 description: |
   News pipeline operations — branch management, prompt tuning, source
   management, event review, newsletter sends. Separate from the data
   pipeline because the tools, judgment, and failure modes are different.
-  Currently driven through `soria db query` against the news Postgres tables
-  and direct HTTP calls to backend news endpoints — no dedicated `soria news`
-  subcommand exists yet.
+  Driven through `mcp__soria__news_*` tools (`news_pipeline`, `news_branches`,
+  `news_articles`, `news_events`) plus `mcp__soria__database_query` /
+  `prompt_manage` for Postgres-backed config.
   Use when asked to "check the news pipeline", "tune the prompts",
   "review sources", "check news health", or anything news-pipeline related.
   Not for data pipelines — use /ingest for that. (soria-stack)
@@ -23,17 +23,12 @@ allowed-tools:
 ```bash
 mkdir -p ~/.soria-stack/artifacts
 echo "SKILL: newsroom"
-echo "---"
-echo "Active environment:"
-soria env status 2>&1 || echo "  (soria CLI not authed — run /env first)"
 ```
-
-**Before proceeding:** Read the `soria env status` output. If the active
-environment type is `prod`, refuse writes unless the user explicitly
-acknowledges. Read-only health checks against prod are fine.
 
 Read `ETHOS.md`. The news pipeline has fundamentally different tools and
 failure modes than the data pipeline — that's why it's a separate skill.
+Writes land on shared state; use `mcp__soria__news_branches(action="clone")`
+to test changes against a throwaway branch before touching the active one.
 
 ## Skill routing (always active)
 
@@ -54,17 +49,6 @@ You are a news pipeline operator. Your job is to manage news branches, tune
 extraction/scoring prompts, review source quality, monitor event clustering,
 and oversee newsletter sends.
 
-**Note on CLI coverage:** The `soria` CLI does NOT have a `soria news`
-subcommand yet. For now, this skill uses `soria db query` to read Postgres
-state and direct HTTP calls (via `WebFetch` or `curl` in Bash) to the
-backend news API endpoints. When `soria news` ships, this skill will be
-updated to use it.
-
-If an operation requires a CLI command that doesn't exist yet, flag it —
-don't fall back to MCP, don't import internal Python modules.
-
----
-
 ## Core Operations
 
 ### Branch Management
@@ -77,30 +61,29 @@ News pipeline branches isolate configurations. Each branch has its own:
 
 **Reading branch state:**
 
-```bash
-soria db query "SELECT id, name, is_active, created_at FROM news_branches ORDER BY created_at DESC LIMIT 10"
+```
+mcp__soria__news_branches(action="list")
 ```
 
 **Rules:**
-- Never modify the production branch config without explicit approval
-- To test prompt changes: clone the branch, modify the clone, compare results
+- Never modify the active branch config without explicit approval
+- To test prompt changes: `mcp__soria__news_branches(action="clone", ...)`,
+  modify the clone, compare results
 - Always show before/after when tuning prompts
 
 ### Prompt Tuning
 
 When adjusting extraction or scoring prompts:
 
-1. **Read the current prompt** from the Postgres state:
-   ```bash
-   soria db query "SELECT id, name, content, updated_at FROM news_prompts WHERE branch_id = '{branch_id}'"
+1. **Read the current prompt:**
+   ```
+   mcp__soria__prompt_manage(action="read", group_id="{branch_id}")
    ```
 
-2. **Show current output** on 5 sample articles. Hit the backend's prompt
-   evaluation endpoint directly:
-   ```bash
-   curl -X POST "{soria_base_url}/api/news/prompt/test" \
-     -H "Authorization: Bearer ${SORIA_TOKEN}" \
-     -d '{"prompt_id": "...", "sample_article_ids": [...]}'
+2. **Show current output** on 5 sample articles. Use the news pipeline
+   step runner to re-score with the current prompt on a sample:
+   ```
+   mcp__soria__news_pipeline(step="score", article_ids=[...], test=True)
    ```
 
 3. **Propose the change** with rationale.
@@ -125,17 +108,17 @@ Always show before/after comparisons. Never apply prompt changes without human r
 ### Source Management
 
 - Review source quality periodically — are feeds delivering relevant articles?
-  ```bash
-  soria db query "
-  SELECT s.name, s.url, COUNT(a.id) AS articles_24h,
-    AVG(a.relevance_score) AS avg_relevance
-  FROM news_sources s
-  LEFT JOIN news_articles a ON a.source_id = s.id
-    AND a.created_at > now() - INTERVAL '24 hours'
-  WHERE s.is_active = true
-  GROUP BY s.id, s.name, s.url
-  ORDER BY articles_24h DESC
-  "
+  ```
+  mcp__soria__database_query(sql="
+    SELECT s.name, s.url, COUNT(a.id) AS articles_24h,
+      AVG(a.relevance_score) AS avg_relevance
+    FROM news_sources s
+    LEFT JOIN news_articles a ON a.source_id = s.id
+      AND a.created_at > now() - INTERVAL '24 hours'
+    WHERE s.is_active = true
+    GROUP BY s.id, s.name, s.url
+    ORDER BY articles_24h DESC
+  ")
   ```
 - Flag sources with high noise-to-signal ratio (low avg relevance)
 - Propose new sources with justification
@@ -143,28 +126,20 @@ Always show before/after comparisons. Never apply prompt changes without human r
 ### Event Review
 
 - Check event clustering quality:
-  ```bash
-  soria db query "
-  SELECT e.id, e.title, e.created_at, COUNT(a.id) AS article_count
-  FROM news_events e
-  LEFT JOIN news_event_articles ea ON ea.event_id = e.id
-  LEFT JOIN news_articles a ON a.id = ea.article_id
-  WHERE e.created_at > now() - INTERVAL '7 days'
-  GROUP BY e.id, e.title, e.created_at
-  ORDER BY e.created_at DESC
-  LIMIT 20
-  "
+  ```
+  mcp__soria__news_events(since="7 days", limit=20)
   ```
 - Flag events that seem misclustered (low article count, wrong topic)
 - Check for duplicate events that should be merged
 
 ### Newsletter Sends
 
-Recent changes (#567) add dev audience guards and unsubscribe handling.
-
 - Check newsletter config:
-  ```bash
-  soria db query "SELECT id, name, audience, is_dev, last_sent_at FROM newsletters ORDER BY last_sent_at DESC"
+  ```
+  mcp__soria__database_query(sql="
+    SELECT id, name, audience, is_dev, last_sent_at
+    FROM newsletters ORDER BY last_sent_at DESC
+  ")
   ```
 - Verify the dev audience guard is active before testing sends
 - Never send a real newsletter without explicit human approval
@@ -176,8 +151,13 @@ Recent changes (#567) add dev audience guards and unsubscribe handling.
 When asked to check news pipeline health:
 
 1. **Article flow:**
-   ```bash
-   soria db query "SELECT DATE_TRUNC('day', created_at) AS day, COUNT(*) FROM news_articles WHERE created_at > now() - INTERVAL '7 days' GROUP BY 1 ORDER BY 1"
+   ```
+   mcp__soria__database_query(sql="
+     SELECT DATE_TRUNC('day', created_at) AS day, COUNT(*)
+     FROM news_articles
+     WHERE created_at > now() - INTERVAL '7 days'
+     GROUP BY 1 ORDER BY 1
+   ")
    ```
    Is volume normal? Any gaps?
 
@@ -186,12 +166,12 @@ When asked to check news pipeline health:
 3. **Clustering quality:** Sample 5 recent events. Are articles correctly
    grouped?
 
-4. **Extraction quality:** Sample 10 recent articles. Are scores reasonable?
-   Entities correct?
+4. **Extraction quality:** Sample 10 recent articles via
+   `mcp__soria__news_articles`. Are scores reasonable? Entities correct?
 
 5. **Freshness:** When was the last article ingested?
-   ```bash
-   soria db query "SELECT MAX(created_at) FROM news_articles"
+   ```
+   mcp__soria__database_query(sql="SELECT MAX(created_at) FROM news_articles")
    ```
    Any gaps?
 
@@ -213,6 +193,7 @@ When asked to check news pipeline health:
 4. **Sending newsletters without the dev guard.** Always verify `is_dev=true`
    for test audiences. Real sends require explicit human approval.
 
-5. **Falling back to MCP or internal Python imports.** If a news operation
-   needs a command the CLI doesn't have, surface it as a gap — don't
-   improvise by calling backend modules directly.
+5. **Falling back to internal Python imports.** If a news operation needs
+   a tool that doesn't exist in `mcp__soria__news_*` or `database_query`,
+   surface it as a gap via `/ticket` — don't improvise by calling backend
+   modules directly.

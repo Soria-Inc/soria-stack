@@ -1,20 +1,19 @@
 ---
 name: env
-version: 1.0.0
+version: 2.0.0
 description: |
-  Manage Soria development environments through the `soria env` CLI.
-  Each environment is a git worktree + Neon branch + MotherDuck clone
-  bundled under one name. Wraps list, branch (create), checkout, status,
-  diff, teardown (soft delete, 7-day grace), and restore.
-  Use when asked to "create a dev env", "switch envs", "what am I on",
-  "show what's changed", "tear down this branch", "restore my env",
-  or "list environments". Run first in every session alongside /tools.
-  Read-only for status/list/diff; write ops (branch, teardown, restore)
-  ask for confirmation before acting. (soria-stack)
+  Sanity-check the Soria dev stack. There are no isolated dev environments
+  anymore — the MCP writes directly to shared Postgres + soria_duckdb_staging,
+  soft-delete keeps every write reversible, and prod MotherDuck is reached
+  only via PR-gated CI. This skill confirms MCP reachability, local dev
+  server health (https://dev.soriaanalytics.com), and warns on recent
+  activity so the user knows the shared state they're about to touch.
+  Use when asked "what am I pointed at", "is my dev stack working", "what's
+  the state", or at the start of a session alongside /tools. Read-only.
+  (soria-stack)
 allowed-tools:
   - Read
   - Bash
-  - AskUserQuestion
 ---
 
 ## Preamble (run first)
@@ -23,27 +22,23 @@ allowed-tools:
 mkdir -p ~/.soria-stack/artifacts
 echo "SKILL: env"
 echo "---"
-if ! command -v soria >/dev/null 2>&1; then
-  echo "ERROR: soria CLI not installed."
-  echo "Install from soria-2 repo root: uv tool install --from ./cli soria-cli"
-  exit 1
-fi
-echo "Active environment:"
-soria env status 2>&1
+echo "Local repo:"
+git rev-parse --show-toplevel 2>&1 | head -1
+git status --short --branch 2>&1 | head -5
 echo "---"
-echo "All environments:"
-soria env list 2>&1 | head -30
+echo "dev-https cert:"
+[ -f frontend/dev.soriaanalytics.com.pem ] && echo "  ✓ frontend/dev.soriaanalytics.com.pem" || echo "  ✗ missing — run: make dev-https-setup"
 echo "---"
-echo ".soria-env.json (per-worktree config — read by the MCP proxy on startup):"
-cat .soria-env.json 2>/dev/null || echo "  (not set in this worktree)"
+echo "Recent pipeline activity (via MCP — last 10 events):"
+echo "  run: mcp__soria__pipeline_activity (limit=10) to see who changed what."
 ```
 
-Read `ETHOS.md`. Key principle: environment awareness is mandatory (CLI-First
-Tool Invocation).
+Read `ETHOS.md`. Key principle: MCP-First Tool Invocation — reversibility
+over isolation.
 
 ## Skill routing (always active)
 
-- User wants pipeline inventory for the current env → invoke `/status`
+- User wants pipeline inventory → invoke `/status`
 - User wants to plan work → invoke `/plan`
 - User wants to build a pipeline → invoke `/ingest`
 - User wants to build a dive → invoke `/dive`
@@ -52,223 +47,111 @@ Tool Invocation).
 
 ---
 
-# /env — "Which sandbox are we in?"
+# /env — "What's my dev stack look like?"
 
-You are the environment manager. Every write-path skill in SoriaStack needs
-an active environment, and prod writes need explicit acknowledgment. This
-skill wraps the `soria env` CLI subcommands with guardrails.
+You are the dev-stack preflight. There are no isolated environments to
+switch between. Three shared resources back every session:
 
-An environment is three things bundled:
-- A **git worktree** (isolated code checkout)
-- A **Neon branch** (isolated Postgres database)
-- A **MotherDuck clone** (isolated warehouse schemas)
+- **Postgres (state)** — scrapers, groups, files, schemas, mappings, events
+- **`soria_duckdb_staging`** — the working MotherDuck database; bronze from
+  ingest + dbt staging/intermediate/marts from local `dbt run`
+- **`soria_duckdb_main`** — prod MotherDuck; written only by CI on PR merge
 
-The `soria` CLI manages all three as one unit. Never create them independently.
+Your local work is:
+- **Git checkout** of `soria-2` (ideally on a feature branch)
+- **`make dev-https`** — vite at `https://dev.soriaanalytics.com` proxied
+  to prod DBOS API + Clerk. No local backend needed for dive work.
+- **`mcp__soria__*`** — how this skill pack reaches the Soria platform
 
 ---
 
-## Operations
+## Checks
 
-### List environments
+### 1. MCP reachable
+
+Probe the Soria MCP with a trivial query:
+
+```
+mcp__soria__database_query(sql="SELECT 1 AS ok")
+```
+
+If it errors, the MCP server is unreachable or not configured. Tell the
+user to check `~/.claude.json → mcpServers.soria` and restart Claude Code.
+
+### 2. Local dev-https cert
 
 ```bash
-soria env list
+[ -f frontend/dev.soriaanalytics.com.pem ] && echo "ok" || echo "missing"
 ```
 
-Shows all environments the current user has, with type (dev/preview/prod),
-status, and which one is active. Active env is marked with `*`.
+Missing cert? Tell the user to run `make dev-https-setup` once. Until that
+runs, `https://dev.soriaanalytics.com` won't work.
 
-Report back as a table:
-
-```
-Environments (5 total, 1 active)
-
-| Name              | Type    | Status   | Worktree                          |
-|-------------------|---------|----------|-----------------------------------|
-| prickle-bottle *  | dev     | active   | ~/.soria/worktrees/prickle-bottle |
-| soft-shoe         | dev     | idle     | ~/.soria/worktrees/soft-shoe      |
-| pr-742-preview    | preview | building | (remote only)                     |
-| prod              | prod    | —        | (remote only)                     |
-```
-
-### Show current environment
+### 3. Uncommitted / unpushed work
 
 ```bash
-soria env status
-```
-
-Reports active environment with pipeline state summary: most recent scraper
-runs, warehouse freshness, dbt last-run timestamp, any failures.
-
-### Create a new dev environment
-
-```bash
-soria env branch              # random name
-soria env branch my-feature   # explicit name
-```
-
-Creates git worktree + Neon branch + MotherDuck clone. The CLI prints the
-worktree path. To actually cd into it, the shell wrapper must be installed
-(`soria shell-setup >> ~/.zshrc`).
-
-**Always confirm before creating.** Ask:
-- Do you want a random name or something specific?
-- Do you want me to `cd` into the new worktree? (Requires shell wrapper.)
-
-After creation, report:
-```
-Created environment: prickle-bottle
-  Worktree:  /Users/you/.soria/worktrees/prickle-bottle
-  Neon:      soria-main-prickle-bottle (branched from prod)
-  MotherDuck: soria_duckdb__prickle_bottle
-Next: cd to the worktree and run `soria env status` to confirm.
-```
-
-### Checkout (switch to) an environment
-
-```bash
-soria env checkout my-feature
-```
-
-Prints the worktree path of the target environment. With the shell wrapper
-installed, this acts as a `cd` via `eval`. Without the wrapper, the user
-must cd manually.
-
-**Remind the user** if the wrapper isn't set up:
-```
-soria shell-setup >> ~/.zshrc && source ~/.zshrc
-```
-
-### Diff — what changed vs prod
-
-```bash
-soria env diff
-```
-
-Shows code changes (`git log`) + data changes (Postgres diff, MotherDuck
-schema diff, unpublished files) for the current environment against prod.
-
-This is the **primary promotion pre-flight check**. Run it whenever the
-user says "what's changed?" or "what am I about to promote?"
-
-Report format:
-```
-Environment: prickle-bottle → prod
-
-Code changes:
-  2 commits ahead of origin/main
-  - feat: medicaid states dive + dbt marts + manifest
-  - fix: sql model review on stg_medicaid_enrollment
-
-Data changes:
-  Scrapers: 1 new run (medicaid, 47 files)
-  Warehouse: bronze.medicaid_enrollment (materialized, 456,789 rows)
-  dbt: soria_dives.marts.medicaid_enrollment — new model
-  Unpublished files: 0
-
-Ready to promote: YES (but run /verify first)
-```
-
-### Teardown (soft delete)
-
-```bash
-soria env teardown my-feature
-```
-
-Soft-deletes an environment with a 7-day grace period. The worktree, Neon
-branch, and MotherDuck clone become unreachable but are not destroyed until
-the grace period expires.
-
-### ⛔ GATE: teardown confirmation
-
-NEVER run teardown without explicit confirmation. **Before asking**, check
-the worktree for uncommitted changes:
-
-```bash
-# cd into the worktree of the env being torn down
-cd $(soria env checkout {name} 2>/dev/null | tail -1) 2>/dev/null || echo "(cannot locate worktree)"
-git status --short
+git status --short --branch
 git log --oneline origin/main..HEAD 2>/dev/null | head -10
 ```
 
-If there are uncommitted changes OR unpushed commits, surface them in the
-confirmation:
+Surface uncommitted changes or unpushed commits. Every promote is a PR,
+so unpushed work isn't promoted — the user should know.
+
+### 4. Recent pipeline activity
 
 ```
-⚠️  Environment: my-feature has UNSAVED WORK
-
-Uncommitted changes (will be PERMANENTLY LOST on teardown):
-  M  frontend/src/dives/medicaid-states.tsx
-  ?? frontend/src/dives/manifests/medicaid-states.manifest.ts
-
-Unpushed commits (will be lost unless you push first):
-  a1b2c3d feat: medicaid states dive + dbt marts
-
-Recommendation: commit + push before teardown, OR cancel and save your work.
+mcp__soria__pipeline_activity(limit=10)
 ```
 
-Then the confirmation:
+Report the last ~10 pipeline events — create/update/delete on scrapers,
+groups, files, schemas, value mappings. This surfaces "who touched what
+yesterday" so the user knows the shared state they're about to touch.
+
+### 5. Warehouse freshness
 
 ```
-About to teardown environment: my-feature
-
-This will soft-delete:
-  Worktree:  /Users/you/.soria/worktrees/my-feature
-  Neon:      soria-main-my-feature
-  MotherDuck: soria_duckdb__my_feature
-
-7-day grace period — use `soria env restore my-feature` to undo within 7 days.
-The worktree and its uncommitted changes are NOT restored by `restore` —
-only the Neon branch and MotherDuck clone.
-
-Proceed? [requires explicit "yes" or "teardown it"]
+mcp__soria__warehouse_query(sql="
+  SELECT table_schema, table_name, estimated_size
+  FROM duckdb_tables()
+  WHERE table_schema IN ('bronze','staging','intermediate','marts')
+  ORDER BY table_name
+")
 ```
 
-### Restore (undo teardown)
-
-```bash
-soria env restore my-feature
-```
-
-Reverses a teardown within the 7-day grace period. Report success or
-explain why it failed (expired, typo, wrong account).
+Report a compact table of what's in staging. If bronze is empty for a
+group the user wants to dive on, flag it — they'll need `/ingest` first.
 
 ---
 
-## Prod acknowledgment
-
-If the user asks to switch to prod, require acknowledgment:
+## Summary output
 
 ```
-⚠️  You're switching to the PROD environment.
+Dev stack status
 
-This means:
-  - Any write-path skill (/ingest, /map, /dive, /promote) will affect
-    production data and customer-facing dashboards
-  - Writes are gated per-skill; most skills will refuse prod writes
-    unless you explicitly acknowledge again at that skill
+  Repo:        soria-2 @ feat/medicaid-states (2 ahead, 0 behind)
+  MCP:         ✓ reachable (soria)
+  dev-https:   ✓ cert installed
+  Uncommitted: 3 files
+  Unpushed:    2 commits
+  Recent MCP:  4 writes in last hour by you (groups, schemas, extractions)
+  Staging:     bronze 12 tables, marts 9 tables
 
-Are you sure you want to switch to prod? [requires "yes, prod"]
+Next: /status (inventory), /plan (design work), /ingest (scrape),
+      /dive (build a dive), /verify (check correctness).
 ```
 
 ---
 
 ## Anti-Patterns
 
-1. **Running teardown without confirmation.** 7-day grace period is not
-   an excuse to act without asking. The worktree may have uncommitted work.
-2. **Assuming the shell wrapper is installed.** After `soria env checkout`
-   or `soria env branch`, always remind the user if they're not in the new
-   worktree yet.
-3. **Silent prod switches.** Never switch to prod without explicit
-   acknowledgment. Never write to prod without re-acknowledging at the
-   write-path skill.
-4. **Manipulating git worktrees, Neon branches, or MotherDuck clones
-   directly.** Always go through `soria env` — those three resources are
-   managed as one unit.
-5. **Running a write-path skill without confirming env first.** Every
-   write-path skill's preamble should check `soria env status`. If the env
-   is unset, the skill should refuse to proceed until `/env` is invoked.
+1. **Claiming there are isolated envs.** There aren't. Every write is to
+   shared state. Safety comes from soft-delete + audit trail, not from
+   sandboxing.
+2. **Running write-path skills blind.** Always surface recent pipeline
+   activity so the user can see what state they're inheriting.
+3. **Telling the user to install the `soria` CLI.** It doesn't exist.
+   The MCP is the entry point.
+4. **Trying to `soria env` anything.** All `soria env` commands are dead.
 
 ---
 
@@ -276,17 +159,21 @@ Are you sure you want to switch to prod? [requires "yes, prod"]
 
 ```bash
 cat > ~/.soria-stack/artifacts/env-$(date +%Y%m%d-%H%M%S).md << 'ARTIFACT'
-# Environment: [name]
+# Dev stack preflight
 
-## Action
-[list / status / branch / checkout / diff / teardown / restore]
+## Summary
+Repo: [branch, ahead/behind]
+MCP: [reachable / error]
+dev-https cert: [present / missing]
+Uncommitted: [count]
+Unpushed: [count]
 
-## State
-Active: [name]
-Type: [dev | preview | prod]
-Worktree: [path]
-Neon branch: [name]
-MotherDuck clone: [name]
+## Recent MCP activity
+[10 events — actor, action, entity]
+
+## Warehouse
+bronze: [count tables]
+staging / intermediate / marts: [counts]
 
 ## Outcome
 Status: [DONE | DONE_WITH_CONCERNS | BLOCKED | NEEDS_CONTEXT]

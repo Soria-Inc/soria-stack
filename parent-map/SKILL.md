@@ -1,12 +1,13 @@
 ---
 name: parent-map
-version: 2.0.0
+version: 3.0.0
 description: |
   Build and maintain the centralized parent company mapping table. Resolves
   company names and codes to their ultimate parent using parallel.ai enrichment,
   with ownership timelines, tickers, and network affiliations.
   One table, all data sources. Code-based joins, not name-based.
-  Drives the Soria platform through the `soria` CLI and `parallel.ai` API.
+  Drives the Soria platform through `mcp__soria__*` tools and the
+  `parallel.ai` API.
   Use when asked to "parent map", "who owns", "map these companies",
   "consolidate companies", "resolve parent", or when a new data source
   needs parent company rollup for dives.
@@ -29,16 +30,9 @@ allowed-tools:
 mkdir -p ~/.soria-stack/artifacts
 echo "SKILL: parent-map"
 echo "---"
-echo "Active environment:"
-soria env status 2>&1 || echo "  (soria CLI not authed — run /env first)"
-echo "---"
 echo "Checking for prior artifacts..."
 ls -t ~/.soria-stack/artifacts/ingest-*.md ~/.soria-stack/artifacts/parent-map-*.md 2>/dev/null | head -5
 ```
-
-**Before proceeding:** Read the `soria env status` output. If the active
-environment type is `prod`, refuse to write parent mappings unless the
-user explicitly acknowledges. For dev/preview envs, proceed normally.
 
 Read `ETHOS.md`. Key principles: #9 (historical names stay historical),
 #10 (validate with eyes).
@@ -61,12 +55,13 @@ company trend lines are all broken.
 
 **Where this state lives:**
 - The `ref_company_parent_mapping` rows live in the `parent_mapping` scraper's
-  bronze table — promoted via `soria warehouse publish` + diff-based promotion
-- Gold model changes that wire the join live as SQL files in the dive's dbt
-  project (`frontend/src/dives/dbt/models/intermediate/` or similar)
+  bronze table — published via `mcp__soria__warehouse_manage(action="publish")`
+  and promoted to prod through a PR (see `/promote`)
+- dbt model changes that wire the join live as SQL files in
+  `frontend/src/dives/dbt/models/intermediate/` or `models/staging/`
 
-Commit any gold-model SQL edits in git before `/promote`. The parent mapping
-rows themselves promote via diff, no manual commit needed.
+Commit the dbt SQL edits in git before `/promote`. The parent mapping rows
+themselves travel with the PR via the `warehouse_promote` manifest.
 
 ---
 
@@ -107,22 +102,22 @@ created_at          -- When mapping was created
 
 ```sql
 -- NAIC: two-stage join (group first, cocode fallback)
-LEFT JOIN silver.stg_parent_mapping m_group
+LEFT JOIN staging.stg_parent_mapping m_group
   ON d.group_code = m_group.code AND m_group.code_type = 'naic_group'
-LEFT JOIN silver.stg_parent_mapping m_cocode
+LEFT JOIN staging.stg_parent_mapping m_cocode
   ON d.cocode = m_cocode.code AND m_cocode.code_type = 'naic_cocode'
 -- Result: COALESCE(m_group.canonical_parent, m_cocode.canonical_parent, d.company_name)
 
 -- MA Enrollment: direct join on contract
-LEFT JOIN silver.stg_parent_mapping m
+LEFT JOIN staging.stg_parent_mapping m
   ON d.contract_number = m.code AND m.code_type = 'ma_contract'
 
 -- SNF/HHA Cost Reports: join on CCN
-LEFT JOIN silver.stg_parent_mapping m
+LEFT JOIN staging.stg_parent_mapping m
   ON d.provider_ccn = m.code AND m.code_type = 'cms_ccn'
 
 -- Generic: any dataset with a code
-LEFT JOIN silver.stg_parent_mapping m
+LEFT JOIN staging.stg_parent_mapping m
   ON d.{code_column} = m.code AND m.code_type = '{type}'
 ```
 
@@ -134,8 +129,8 @@ Before running parallel.ai, figure out what's unmapped.
 
 ### The universal pattern
 
-```bash
-soria warehouse query "
+```
+mcp__soria__warehouse_query(sql="
 WITH src_entities AS (
   SELECT DISTINCT
     {code_column} AS code,
@@ -149,9 +144,9 @@ SELECT
   COUNT(CASE WHEN m.code IS NOT NULL THEN 1 END) AS matched,
   COUNT(CASE WHEN m.code IS NULL THEN 1 END) AS unmapped
 FROM src_entities e
-LEFT JOIN silver.stg_parent_mapping m
+LEFT JOIN staging.stg_parent_mapping m
   ON e.code = m.code AND e.code_type = m.code_type
-"
+")
 ```
 
 ### Source-specific patterns
@@ -160,25 +155,25 @@ LEFT JOIN silver.stg_parent_mapping m
 ```sql
 -- Grouped companies: one per group_code (preferred)
 SELECT DISTINCT group_code AS code, 'naic_group' AS code_type, group_name
-FROM silver.stg_naic_demographics
+FROM staging.stg_naic_demographics
 WHERE group_code IS NOT NULL AND group_code != '0'
 
 -- Ungrouped: one per cocode (fallback)
 SELECT DISTINCT cocode AS code, 'naic_cocode' AS code_type, full_company_name
-FROM silver.stg_naic_demographics
+FROM staging.stg_naic_demographics
 WHERE group_code IS NULL OR group_code = '0'
 ```
 
 **MA Enrollment** — one per contract:
 ```sql
 SELECT DISTINCT contract_number AS code, 'ma_contract' AS code_type, parent_organization
-FROM silver.stg_ma_monthly_enrollment_by_plan
+FROM staging.stg_ma_monthly_enrollment_by_plan
 ```
 
 **CMS Cost Reports** — one per CCN:
 ```sql
 SELECT DISTINCT provider_ccn AS code, 'cms_ccn' AS code_type, facility_name
-FROM silver.stg_snf_cost_reports
+FROM staging.stg_snf_cost_reports
 ```
 
 ### ⛔ GATE: Match rate assessed
@@ -347,29 +342,29 @@ parent list before uploading.
 
 ## Gate 4: Upload and Verify
 
-1. Save as CSV with full schema
+1. Save as CSV with full schema.
 2. Upload via the standard scraper flow:
-   ```bash
-   soria scraper upload-urls parent_mapping
-   # upload the CSV to the returned presigned URL
-   soria scraper confirm parent_mapping
    ```
-3. Schema + mappings (if CSV):
-   ```bash
-   soria schema mappings-read {group_id}
-   soria schema mappings-update {group_id}
+   mcp__soria__scraper_upload_urls(scraper="parent_mapping", count=1)
+   # upload the CSV to the returned presigned URL
+   mcp__soria__scraper_confirm_uploads(scraper="parent_mapping")
+   ```
+3. Schema mappings (CSV):
+   ```
+   mcp__soria__schema_mappings(action="read", group_id="{id}")
+   mcp__soria__schema_mappings(action="update", group_id="{id}", mappings={...})
    ```
 4. Publish to warehouse with force:
-   ```bash
-   soria warehouse publish {group_id} --force
    ```
-5. Update bronze model and re-run dbt for any downstream silver/gold that
-   reads from `stg_parent_mapping`.
+   mcp__soria__warehouse_manage(action="publish", group_id="{id}", force=True)
+   ```
+5. Re-run dbt for any downstream staging/intermediate that reads from
+   `stg_parent_mapping` (`dbt run --select +stg_parent_mapping+`).
 
 ### Verify 100% join
 
-```bash
-soria warehouse query "
+```
+mcp__soria__warehouse_query(sql="
 WITH src_entities AS (
   SELECT DISTINCT
     {code_column} AS code,
@@ -381,9 +376,9 @@ SELECT
   COUNT(*) AS total,
   COUNT(CASE WHEN m.code IS NOT NULL THEN 1 END) AS matched
 FROM src_entities e
-LEFT JOIN silver.stg_parent_mapping m
+LEFT JOIN staging.stg_parent_mapping m
   ON e.code = m.code AND e.code_type = m.code_type
-"
+")
 ```
 
 **Must be 100% before proceeding.** If not, go back to Gate 2 for the
@@ -393,10 +388,10 @@ remaining unmapped entities.
 
 ---
 
-## Gate 5: Wire Into Gold Model
+## Gate 5: Wire Into dbt Intermediate / Marts
 
-Replace name-based parent derivation with code-based join in the downstream
-gold model that feeds dives.
+Replace name-based parent derivation with code-based join in the dbt
+intermediate or marts model that feeds dives.
 
 ### Standard pattern
 
@@ -404,7 +399,7 @@ gold model that feeds dives.
 -- Deduplicate: one parent per code+code_type
 ded_parent_mapping AS (
   SELECT code, code_type, canonical_parent, ticker, affiliation
-  FROM silver.stg_parent_mapping
+  FROM staging.stg_parent_mapping
   QUALIFY ROW_NUMBER() OVER (
     PARTITION BY code, code_type ORDER BY input_name
   ) = 1
@@ -507,9 +502,6 @@ jnd_add_parent AS (
 cat > ~/.soria-stack/artifacts/parent-map-$(date +%Y%m%d-%H%M%S).md << 'ARTIFACT'
 # Parent Mapping: [Data Source]
 
-## Environment
-[Active soria env]
-
 ## Scope
 [Code type, source table, total entities]
 
@@ -525,8 +517,8 @@ cat > ~/.soria-stack/artifacts/parent-map-$(date +%Y%m%d-%H%M%S).md << 'ARTIFACT
 ## Match Rate
 [100% achieved? If not, what's unmatched and why]
 
-## Gold Model
-[Which gold model was wired up, join pattern used]
+## dbt Model
+[Which intermediate/marts model was wired up, join pattern used]
 
 ## Outcome
 Status: [DONE | DONE_WITH_CONCERNS | BLOCKED | NEEDS_CONTEXT]

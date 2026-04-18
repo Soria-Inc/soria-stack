@@ -5,20 +5,24 @@ This file exists for agents (Claude Code, Clawd, etc.) that look for an
 
 ## Key rules for agents
 
-1. **Start every session with `/env` then `/tools`.** No other skill should
-   run until the active environment is known and the `soria` CLI is verified.
-2. **No Soria MCP.** The Soria platform is driven exclusively through the
-   `soria` CLI. Never load `sumo_*` / `news_*` / `mcp__sumo__*` tools.
-   External MCP is OK where scoped: `mcp__linear__*` is owned by `/ticket`
-   (other skills invoke `/ticket` rather than calling Linear directly);
-   `mcp__openclaw__mempalace_search` is used for domain grounding and
-   prior-session search across several skills.
-3. **Git-native authoring.** Scrapers, dbt SQL, manifests, dive TSX all live
-   as files in the env's worktree. Commit in logical chunks as you go.
-4. **Prod safety.** Every write-path skill refuses to run against prod
-   unless the user explicitly acknowledges. `/promote` is the only skill
-   that's expected to interact with prod, and it does so via PR, not direct
-   writes.
+1. **Start every session with `/tools`.** No other skill should run until
+   the `soria` MCP is confirmed reachable and the local dev stack is
+   installed.
+2. **MCP-first.** The Soria platform is driven exclusively through the
+   `mcp__soria__*` tool namespace — `scraper_run`, `detection_run`,
+   `extraction_run`, `validation_run`, `warehouse_query`, `warehouse_manage`,
+   `schema_manage`, `value_manage`, `database_query`, `database_mutate`,
+   `news_*`, etc. There is no `soria` CLI. `mcp__linear__*` is owned by
+   `/ticket`; `mcp__openclaw__mempalace_search` is used for domain grounding
+   and prior-session search across several skills.
+3. **Git-native authoring for dives.** dbt SQL, manifests, dive TSX all
+   live as files in `frontend/src/dives/`. Edit locally, commit in logical
+   chunks, push a PR. Promotion runs in CI, not a command.
+4. **Reversibility over isolation.** There are no isolated environments.
+   MCP writes hit shared Postgres + `soria_duckdb_staging`. Every write is
+   soft-delete reversible via `deleted_at` + the `PipelineEvent` audit
+   trail. Skills should prefer undoing over asking permission for reversible
+   changes — but still surface what was changed so the user can audit.
 5. **Read `ETHOS.md`** before any data pipeline work. All numbered
    principles apply.
 

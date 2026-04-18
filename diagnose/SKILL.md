@@ -1,13 +1,14 @@
 ---
 name: diagnose
-version: 2.0.0
+version: 3.0.0
 description: |
   Diagnose and fix broken pipelines, silent failures, missing data, dive
   load failures, and infrastructure issues. Triage-first — observe before
   hypothesizing. Five modes: Silent Failure, Data Trace, Schema Mismatch,
-  Infrastructure, Quality. Investigates via `soria` CLI commands, never
-  MCP. Ends with either an inline fix or a Linear ticket for backend
-  changes.
+  Infrastructure, Quality. Investigates via `mcp__soria__*` tools
+  (database_query, warehouse_query, file_query, pipeline_activity /
+  pipeline_history / pipeline_cascade). Ends with either an inline fix or
+  a Linear ticket for backend changes.
   Use when something "isn't working", "returned wrong data", "said success
   but nothing happened", "is slow", "is missing rows", or a dive "won't
   load" or "shows NaN". Proactively invoke this skill when the user
@@ -25,17 +26,17 @@ allowed-tools:
 mkdir -p ~/.soria-stack/artifacts
 echo "SKILL: diagnose"
 echo "---"
-echo "Active environment:"
-soria env status 2>&1 || echo "  (soria CLI not authed — run /env first)"
-echo "---"
-echo ".soria-env.json (per-worktree config):"
-cat .soria-env.json 2>/dev/null || echo "  (not set in this worktree)"
+echo "Git state (soria-2):"
+git status --short 2>&1 | head -10 || echo "  (not in soria-2 checkout)"
 echo "---"
 echo "Recent debug artifacts:"
 ls -t ~/.soria-stack/artifacts/diagnose-*.md 2>/dev/null | head -3 || echo "  (none)"
 ```
 
-Read `ETHOS.md` from this skill pack.
+Also run `mcp__soria__pipeline_activity(limit=20)` — if the failure is
+recent, the triggering write usually shows up in the last 20 events.
+
+Read `ETHOS.md`.
 
 ## Skill routing (always active)
 
@@ -66,17 +67,28 @@ most common AI debugging mistake — querying columns that exist in Pydantic mod
 or ORM classes but not in the actual database table.
 
 Before ANY diagnostic query, run:
-```bash
-# Postgres state DB
-soria db query "SELECT column_name FROM information_schema.columns WHERE table_name = '{table}' AND table_schema = 'public' ORDER BY ordinal_position"
+
+```
+mcp__soria__database_query(sql="
+  SELECT column_name, data_type
+  FROM information_schema.columns
+  WHERE table_name = '{table}' AND table_schema = 'public'
+  ORDER BY ordinal_position
+")
 ```
 
 For warehouse tables:
-```bash
-soria warehouse query "SELECT column_name FROM information_schema.columns WHERE table_schema = '{schema}' AND table_name = '{table}'"
+
+```
+mcp__soria__warehouse_query(sql="
+  SELECT column_name, data_type
+  FROM information_schema.columns
+  WHERE table_schema = '{schema}' AND table_name = '{table}'
+")
 ```
 
 For dive manifests — read the file directly:
+
 ```bash
 cat frontend/src/dives/manifests/{dive-id}.manifest.ts
 ```
@@ -93,10 +105,10 @@ Then classify into one of five modes:
 
 | Symptom | Mode | The problem |
 |---------|------|-------------|
-| "It said success but nothing happened" | **Silent Failure** | Command returned 0 but produced no output |
+| "It said success but nothing happened" | **Silent Failure** | MCP tool returned success but produced no output |
 | "Wrong data / missing rows / NULLs" | **Data Trace** | Data exists somewhere but is wrong or incomplete |
 | "Column/table doesn't exist" | **Schema Mismatch** | Migration not applied, wrong table name, stale schema |
-| "Slow / timeout / connection error / dive won't load" | **Infrastructure** | Neon pool, MotherDuck cold start, DBOS Cloud, WASM cold start, Durable Object event relay |
+| "Slow / timeout / connection error / dive won't load" | **Infrastructure** | MotherDuck cold start, DBOS Cloud, WASM cold start, event relay |
 | "Extraction produced bad data" | **Quality** | LLM output wrong, truncated, or incomplete |
 
 Pick the mode. Say it out loud: "This looks like a **silent failure** — let me trace it."
@@ -108,67 +120,75 @@ Pick the mode. Say it out loud: "This looks like a **silent failure** — let me
 Operations that report success but produce nothing. The most dangerous failure
 type because the AI will initially believe the "OK" response.
 
-**Core rule: Never trust CLI exit codes alone. Verify independently.**
+**Core rule: Never trust tool success alone. Verify independently.**
 
 ### Diagnostic steps
 
-1. **What command was run?** Note the exact invocation and flags.
+1. **What tool was called?** Note the exact invocation and params.
 
 2. **Verify the output exists independently:**
 
-   - `soria scraper run` said "started" → check for downloaded files:
-     ```bash
-     soria db query "SELECT id, name, status, created_at FROM files WHERE scraper_id = '{scraper_id}' ORDER BY created_at DESC LIMIT 10"
+   - `mcp__soria__scraper_run` said "started" → check for downloaded files:
+     ```
+     mcp__soria__database_query(sql="
+       SELECT id, name, status, created_at FROM files
+       WHERE scraper_id = '{scraper_id}' ORDER BY created_at DESC LIMIT 10
+     ")
      ```
 
-   - `soria extract` said "started for N files" → check for child files:
-     ```bash
-     soria db query "SELECT id, name, status FROM files WHERE parent_file_id IN (SELECT id FROM files WHERE group_id = '{group_id}') ORDER BY created_at DESC LIMIT 20"
+   - `mcp__soria__extraction_run` said "started for N files" → check for child files:
+     ```
+     mcp__soria__database_query(sql="
+       SELECT id, name, status FROM files
+       WHERE parent_file_id IN (SELECT id FROM files WHERE group_id = '{group_id}')
+       ORDER BY created_at DESC LIMIT 20
+     ")
      ```
 
-   - `soria warehouse publish` said OK → check the warehouse table:
-     ```bash
-     soria warehouse query "SELECT COUNT(*) FROM bronze.{table_name}"
+   - `mcp__soria__warehouse_manage(action="publish")` said OK → check bronze:
      ```
-
-   - `soria warehouse materialize` said OK → verify table type:
-     ```bash
-     soria warehouse query "SELECT table_name, table_type FROM information_schema.tables WHERE table_schema = '{schema}' AND table_name = '{table}'"
+     mcp__soria__warehouse_query(sql="SELECT COUNT(*) FROM soria_duckdb_staging.bronze.{table_name}")
      ```
 
    - `dbt run` said "1 of 1 OK" → query the materialized marts row:
-     ```bash
-     soria warehouse query "SELECT COUNT(*) FROM soria_duckdb_main.main_marts.{model}"
+     ```
+     mcp__soria__warehouse_query(sql="SELECT COUNT(*) FROM soria_duckdb_staging.marts.{model}")
      ```
 
-   - `dbt test` said pass → read the most recent run-results:
+   - `dbt test` said pass → read run-results:
      ```bash
-     cat frontend/public/dbt-run-results.json | jq '.results[] | select(.status != "pass")'
+     cat frontend/src/dives/dbt/target/run_results.json | jq '.results[] | select(.status != "pass")'
      ```
 
-3. **If output doesn't exist, check known causes:**
+3. **Check the audit trail:** `PipelineEvent` knows what actually committed.
+   ```
+   mcp__soria__pipeline_history(entity_type="{Group|File|Scraper}", entity_id="{id}")
+   ```
+   Compare against what you expected. If the event isn't there, the write
+   never committed — retry or diagnose further.
 
-   - **VIEW/TABLE type conflict:** `soria warehouse materialize` fails silently
-     when trying to CREATE TABLE over an existing VIEW (or vice versa).
-   - **Wrong env:** You may be reading prod while writing to dev. Check:
-     ```bash
-     soria env list
-     ```
-   - **Extractor stamp filtering:** Files may be filtered out before `--force`
-     is checked. Look for files with `extractor_id` already set.
+4. **Known causes:**
+
+   - **Soft-delete filter hiding rows:** The `do_orm_execute` listener hides
+     rows with `deleted_at IS NOT NULL`. If a file was soft-deleted out of
+     reach, it won't appear in `database_query`. Query with
+     `deleted_at IS NOT NULL` to see them.
+   - **Stale warehouse table:** `warehouse_manage(action="publish")` may have
+     soft-deleted the old table record but bronze is still the old shape.
+     Re-publish with `force=True`.
    - **Upstream event relay crash:** Cloudflare Durable Object event relay
      (`workers/event-relay`) may have dropped the notify event — the row
-     landed but downstream skills never heard about it.
+     landed but downstream subscribers never heard about it.
 
-4. **Check prior sessions for this exact failure:**
+5. **Check prior sessions for this exact failure:**
    ```
-   mcp__openclaw__mempalace_search: query="silent failure {command_name}"
+   mcp__openclaw__mempalace_search(query="silent failure {tool_name}")
    ```
 
 ### Disposition
 - Backend bug (error swallowing, race condition) → **Ticket**
-- Wrong env → **Fix inline** (switch envs, retry)
-- Stale artifact blocking → **Fix inline** (drop and retry)
+- Stale artifact blocking → **Fix inline** (`force=True` re-publish, or unpublish + republish)
+- Soft-delete hiding expected row → **Fix inline** (flip `deleted_at` back via `database_mutate`)
 - Upstream event relay issue → **Ticket** + manual re-trigger
 
 ---
@@ -183,53 +203,61 @@ multi-layer tracing.
 1. **Identify the layer the user is seeing the problem at:**
    - Dive (browser) → user-facing
    - dbt marts → dive SQL layer
-   - Gold / silver → upstream analytical layer
-   - Bronze / warehouse → raw data
+   - dbt intermediate / staging → transformation layers
+   - Bronze (staging warehouse) → raw published data
    - Postgres state → pipeline state
 
 2. **Trace backwards through every layer.** At each layer, get a row count
    and check for the specific problem:
 
-   ```bash
-   # Layer 5: Dive marts (what the dive queries)
-   soria warehouse query "SELECT COUNT(*) FROM soria_duckdb_main.main_marts.{model}"
+   ```
+   # Layer 5: Marts (what the dive queries)
+   mcp__soria__warehouse_query(sql="SELECT COUNT(*) FROM soria_duckdb_staging.marts.{model}")
 
-   # Layer 4: Gold (joins + logic)
-   soria warehouse query "SELECT COUNT(*) FROM gold.{model}"
+   # Layer 4: Intermediate (joins + logic)
+   mcp__soria__warehouse_query(sql="SELECT COUNT(*) FROM soria_duckdb_staging.intermediate.{model}")
 
-   # Layer 3: Silver (cleaned + typed)
-   soria warehouse query "SELECT COUNT(*) FROM silver.{model}"
+   # Layer 3: Staging (cleaned + typed)
+   mcp__soria__warehouse_query(sql="SELECT COUNT(*) FROM soria_duckdb_staging.staging.{model}")
 
-   # Layer 2: Bronze (raw data)
-   soria warehouse query "SELECT COUNT(*) FROM bronze.{table}"
+   # Layer 2: Bronze (raw published data)
+   mcp__soria__warehouse_query(sql="SELECT COUNT(*) FROM soria_duckdb_staging.bronze.{table}")
 
    # Layer 1: Postgres pipeline state
-   soria db query "SELECT COUNT(*) FROM files WHERE group_id = '{group_id}' AND status = 'published'"
+   mcp__soria__database_query(sql="
+     SELECT COUNT(*) FROM files
+     WHERE group_id = '{group_id}' AND status = 'published'
+   ")
    ```
 
 3. **Find where the data disappears or goes wrong.** The layer where counts
    diverge or values change is where the bug lives.
 
 4. **Common root causes by divergence point:**
-   - Bronze has rows, silver doesn't → silver SQL filter too aggressive
-   - Silver has rows, gold doesn't → join condition wrong
-   - Gold has rows, marts don't → dbt model staleness (run `dbt run --select {model}`)
+   - Bronze has rows, staging doesn't → staging SQL filter too aggressive
+   - Staging has rows, intermediate doesn't → join condition wrong
+   - Intermediate has rows, marts don't → dbt model staleness (run `dbt run --select {model}`)
    - Marts has rows, dive shows nothing → manifest filter value drift —
      the manifest references a filter value that doesn't exist in the data:
      ```bash
      cat frontend/src/dives/manifests/{dive}.manifest.ts
-     soria warehouse query "SELECT DISTINCT {filter_column} FROM soria_duckdb_main.main_marts.{model}"
      ```
-   - Data loaded 2-3x → repeated `soria warehouse publish` without dedup.
+     ```
+     mcp__soria__warehouse_query(sql="
+       SELECT DISTINCT {filter_column}
+       FROM soria_duckdb_staging.marts.{model}
+     ")
+     ```
+   - Data loaded 2-3x → repeated publish without dedup.
      Check `_source_file` column for duplicates.
 
 ### Disposition
-- SQL bug in silver/gold → **Fix inline** (update the SQL model, re-run)
+- SQL bug in staging/intermediate/marts → **Fix inline** (edit the dbt model, `dbt run`)
 - dbt model stale → **Fix inline** (`dbt run --select {model}`)
 - Manifest filter drift → **Fix inline** (update manifest values list)
 - Extraction produced bad data → Invoke `/ingest` to fix extractor
 - Value mapping wrong → Invoke `/map`
-- Duplicate publish → **Fix inline** (`soria warehouse unpublish`, then re-publish)
+- Duplicate publish → **Fix inline** (`warehouse_manage(action="unpublish")`, then republish)
 
 ---
 
@@ -240,28 +268,36 @@ Column doesn't exist, table not found, or queries return unexpected structure.
 ### Diagnostic steps
 
 1. **Get the actual schema** (Rule Zero):
-   ```bash
-   soria db query "SELECT column_name, data_type FROM information_schema.columns WHERE table_name = '{table}' AND table_schema = 'public' ORDER BY ordinal_position"
+   ```
+   mcp__soria__database_query(sql="
+     SELECT column_name, data_type
+     FROM information_schema.columns
+     WHERE table_name = '{table}' AND table_schema = 'public'
+     ORDER BY ordinal_position
+   ")
    ```
 
 2. **Compare against what was expected.** Common mismatches:
    - **Computed property, not a DB column:** e.g., something that exists as a
-     Python `@property` but not in the database. Check the model code if available.
+     Python `@property` but not in the database. Check the model code.
    - **Migration not applied:** Column exists in code but not in the database.
      Check Alembic migration status.
-   - **Env branch drift:** Your env was branched before the column was added.
-     Solution: `soria env teardown` + `soria env branch` to get a fresh clone.
-   - **Wrong table name:** dbt marts use `soria_duckdb_main.main_marts.{model}`,
-     NOT `marts.{model}`. Bronze/silver/gold live in `soria_duckdb`.
+   - **Wrong table name:** dbt marts in staging live at
+     `soria_duckdb_staging.marts.{model}`. In prod: `soria_duckdb_main.marts.{model}`.
+     Bronze tables live at `soria_duckdb_staging.bronze.{table}` (or prod
+     counterpart).
 
 3. **For warehouse schema issues:**
-   ```bash
-   soria warehouse query "SELECT table_schema, table_name FROM information_schema.tables WHERE table_name LIKE '%{keyword}%'"
+   ```
+   mcp__soria__warehouse_query(sql="
+     SELECT table_schema, table_name
+     FROM information_schema.tables
+     WHERE table_name ILIKE '%{keyword}%'
+   ")
    ```
 
 ### Disposition
 - Missing migration → **Ticket** (need Alembic migration + deploy)
-- Env branch drift → **Fix inline** (recreate env from fresh clone)
 - Wrong table/column name → **Fix inline** (correct the query)
 
 ---
@@ -274,13 +310,13 @@ Timeouts, connection errors, slow queries, cold starts, dive load failures.
 
 | System | Common failure | Fix |
 |--------|---------------|-----|
-| **Neon (Postgres)** | Pool exhaustion, SSL drops | Transient — retry once; if persistent, ticket |
+| **Postgres (Neon-backed)** | Pool exhaustion, SSL drops | Transient — retry once; if persistent, ticket |
 | **MotherDuck (DuckDB)** | Cold start 30-47s after idle | Architectural — not a bug unless causing gateway timeout |
-| **S3 / managed DuckLake** | Parquet 404, cross-region latency | Check object exists; if transient, retry |
+| **GCS (file storage)** | Object 404, cross-region latency | Check object exists; if transient, retry |
 | **DBOS Cloud** | Worker restart, PG wire timeout | Check DBOS dashboard; ticket if persistent |
-| **Clerk JWT** | Stale token, admin/user role mismatch | Re-login; if role issue, check user metadata |
+| **Clerk JWT** | Stale token, admin/user role mismatch | Re-login at `https://dev.soriaanalytics.com`; if role issue, check user metadata |
 | **Durable Object event relay** (`workers/event-relay`) | Event dropped, relay stuck | Check Cloudflare worker logs; re-trigger event |
-| **WASM cold start** (dive) | First load takes ~20s to download/compile client | Normal — distinguish from "broken" (see dual-mode loading invariant) |
+| **WASM cold start** (dive) | First load takes ~20s to download/compile client | Normal — distinguish from "broken" (dual-mode loading) |
 | **Postgres wire proxy** (dive fallback) | 30s statement timeout | Reduce query complexity or add marts aggregation |
 
 ### Diagnostic steps
@@ -288,13 +324,18 @@ Timeouts, connection errors, slow queries, cold starts, dive load failures.
 1. **Identify the subsystem** from the error message, URL pattern, or stack trace.
 
 2. **For slow dive queries:** Check marts table exists and dbt is fresh:
+   ```
+   mcp__soria__warehouse_query(sql="
+     SELECT table_name FROM information_schema.tables
+     WHERE table_schema = 'marts'
+   ")
+   ```
    ```bash
-   soria warehouse query "SELECT table_name FROM information_schema.tables WHERE table_schema = 'main_marts'"
-   cat frontend/public/dbt-run-results.json | jq '.generated_at'
+   cat frontend/src/dives/dbt/target/manifest.json | jq '.metadata.generated_at'
    ```
 
 3. **For connection errors:** Almost always transient. Retry once. If
-   persistent, likely Neon pool exhaustion or DBOS Cloud worker issue.
+   persistent, likely Postgres pool exhaustion or DBOS Cloud worker issue.
 
 4. **For MotherDuck cold start:** First query after idle takes 30-47s.
    Not a bug. If it causes gateway timeouts, ticket for timeout config.
@@ -310,7 +351,6 @@ Timeouts, connection errors, slow queries, cold starts, dive load failures.
 
 6. **For Durable Object event relay issues:**
    ```bash
-   # Check worker logs (user may need to run this themselves if they're in CF dashboard)
    cd workers/event-relay && wrangler tail
    ```
 
@@ -331,12 +371,12 @@ Extraction produced wrong, incomplete, or truncated data.
 ### Diagnostic steps
 
 1. **Get the source file and extraction output side by side:**
-   ```bash
-   # Find the source file
-   soria file show {file_id}
-
-   # Find extraction outputs (child files)
-   soria db query "SELECT id, name, storage_key, status FROM files WHERE parent_file_id = '{file_id}'"
+   ```
+   mcp__soria__file_query(file_id="{file_id}")                  # source metadata
+   mcp__soria__database_query(sql="
+     SELECT id, name, storage_key, status
+     FROM files WHERE parent_file_id = '{file_id}'
+   ")
    ```
 
 2. **Check for known extraction failure patterns:**
@@ -344,8 +384,11 @@ Extraction produced wrong, incomplete, or truncated data.
      incomplete rows or malformed CSV.
    - **Missing pages:** Detection may not have flagged all relevant pages.
      Check detection results:
-     ```bash
-     soria db query "SELECT file_id, detected_pages FROM detection_results WHERE file_id = '{file_id}'"
+     ```
+     mcp__soria__database_query(sql="
+       SELECT file_id, detected_pages
+       FROM detection_results WHERE file_id = '{file_id}'
+     ")
      ```
    - **Wrong schema applied:** Extractor used wrong column set. Compare
      extraction CSV headers against group schema columns.
@@ -354,8 +397,8 @@ Extraction produced wrong, incomplete, or truncated data.
    Don't check totals or obvious values — check middle-of-table specifics.
 
 ### Disposition
-- Extractor bug → Invoke `/ingest` (fix extractor, re-run with `soria scraper test`)
-- Detection missed pages → **Fix inline** (adjust detection, re-run)
+- Extractor bug → Invoke `/ingest` (fix extractor, dry-run with `extraction_run(test=True, code=...)`)
+- Detection missed pages → **Fix inline** (adjust detection prompt, re-run)
 - LLM truncation → **Ticket** if systemic, or split extraction into smaller chunks
 
 ---
@@ -378,8 +421,7 @@ gh pr list --state open --json number,author,title,headRefName
 
 Linear inspection is owned by `/ticket` — if you need a deeper check
 (duplicate/regression/active agent run with `agent` label), **invoke
-`/ticket`** and let it do the Linear query. That way the ticket skill
-either defers to the agent or files a clean new issue.
+`/ticket`** and let it do the Linear query.
 
 If an active agent run is investigating the same failure, **defer to it** —
 report that the agent is on it and move on. Don't duplicate work or race
@@ -401,15 +443,15 @@ without re-discovering the problem.
 |-----------|--------|
 | Backend code change needed (error swallowing, wrong logic) | invoke `/ticket` |
 | Infrastructure config (pool size, timeout, container cleanup) | invoke `/ticket` |
-| SQL model fix (wrong join, missing filter) | Fix inline (dbt model or silver/gold) |
-| Stale dbt marts | Fix inline (`dbt run`) |
+| SQL model fix (wrong join, missing filter) | Fix inline (edit dbt model, `dbt run`) |
+| Stale dbt marts | Fix inline (`dbt run --select {model}`) |
 | Manifest filter value drift | Fix inline (update manifest) |
 | Re-extraction with adjusted parameters | Fix inline via `/ingest` |
-| Stale env, needs recreation | Fix inline (`soria env teardown` + `branch`) |
+| Soft-deleted row hiding expected data | Fix inline (`database_mutate` flip `deleted_at`) |
 | Systemic LLM extraction failure | invoke `/ticket` |
 | Durable Object event relay stuck | invoke `/ticket` |
 | Modal sandbox agent stuck PR | invoke `/ticket` (agent will pick it up) |
-| `soria` CLI gap (command doesn't exist) | invoke `/ticket` (classify as "Missing feature") |
+| MCP tool gap (needed action has no tool) | invoke `/ticket` (classify as "Missing feature") |
 
 After `/ticket` files the issue, return to `/diagnose` if the user wants
 to continue debugging, or close out with a report.
@@ -421,7 +463,7 @@ to continue debugging, or close out with a report.
 Before deep-diving, check if this exact issue has been debugged before:
 
 ```
-mcp__openclaw__mempalace_search: query="{description of the problem}"
+mcp__openclaw__mempalace_search(query="{description of the problem}")
 ```
 
 If a prior session found the root cause, skip straight to the fix or ticket.
@@ -437,9 +479,6 @@ cat > ~/.soria-stack/artifacts/diagnose-$(date +%Y%m%d-%H%M%S).md << 'ARTIFACT'
 
 ## Symptom
 [What the user reported]
-
-## Environment
-[Active soria env, from `soria env list`]
 
 ## Triage
 Mode: [Silent Failure | Data Trace | Schema Mismatch | Infrastructure | Quality]
@@ -472,8 +511,9 @@ ARTIFACT
 2. **Querying columns without schema discovery.** Rule Zero exists because the AI
    gets this wrong in almost every debug session. `information_schema` first.
 
-3. **Trusting CLI exit codes.** `soria warehouse publish` returning 0 doesn't
-   mean data landed. Verify independently at the destination.
+3. **Trusting MCP tool success.** A publish returning OK doesn't mean data
+   landed. Verify independently at the destination AND check the
+   `PipelineEvent` audit trail.
 
 4. **Checking one layer and declaring success.** Data exists in Postgres but not
    MotherDuck? That's not "data exists." Trace all layers.
@@ -494,3 +534,8 @@ ARTIFACT
 9. **Calling WASM cold start a bug.** First dive load takes ~20s to warm the
    DuckDB-WASM client. The Postgres proxy fallback must return data in the
    meantime. If first paint is slow but data arrives, that's normal.
+
+10. **Hard-deleting to "fix" broken state.** Everything is soft-delete
+    reversible. Flip `deleted_at` via `database_mutate` or use a `force=True`
+    republish — never `DELETE FROM` against shared Postgres.
+```

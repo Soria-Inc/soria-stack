@@ -1,17 +1,20 @@
 ---
 name: ingest
-version: 4.0.0
+version: 5.0.0
 description: |
   Build and run data pipelines — scrape, organize, extract, validate, and publish.
   Five gates with human review at each stop. Handles both PDF/Excel extraction
-  and CSV schema mapping paths. Drives the Soria platform through the `soria`
-  CLI — never MCP. Also handles refresh mode for re-running existing pipelines
-  when new data drops.
+  and CSV schema mapping paths. Drives the Soria platform through the
+  `mcp__soria__*` MCP tool namespace — never a CLI. Ingestion writes to
+  shared Postgres + `soria_duckdb_staging`; every write is soft-delete
+  reversible via the `PipelineEvent` audit trail. Also handles refresh mode
+  for re-running existing pipelines when new data drops.
   Use when asked to "scrape this", "build the pipeline", "extract this data",
   "run the pipeline", or "load this into the warehouse".
   Proactively invoke this skill (do NOT scrape or extract ad-hoc) when the user
   wants to build or run a data pipeline. Gates prevent costly mistakes.
-  Use after /plan, before /map or /dive. Value mapping is handled by /map. (soria-stack)
+  Use after /plan, before /map or /dive. Value mapping is handled by /map.
+  (soria-stack)
 benefits-from: [plan]
 allowed-tools:
   - Read
@@ -26,20 +29,16 @@ allowed-tools:
 mkdir -p ~/.soria-stack/artifacts
 echo "SKILL: ingest"
 echo "---"
-echo "Active environment:"
-soria env status 2>&1 || echo "  (soria CLI not authed — run /env first)"
-echo "---"
-echo "Git state in worktree:"
-git status --short 2>&1 | head -10 || echo "  (not in a worktree)"
+echo "Git state (soria-2):"
+git status --short 2>&1 | head -10 || echo "  (not in soria-2 checkout)"
 echo "---"
 echo "Checking for plan artifacts..."
 ls -t ~/.soria-stack/artifacts/plan-*.md 2>/dev/null | head -3
 ```
 
-**Before proceeding:** Read the `soria env status` output. If the active
-environment type is `prod`, refuse to run any write step (Gate 1 onwards)
-unless the user explicitly acknowledges with a phrase like "yes, I know
-it's prod". For dev/preview envs, proceed normally.
+Also run `mcp__soria__pipeline_activity(limit=10)` to see the last ~10
+writes across scrapers/groups/files/schemas — ingestion lands on shared
+state, so you should know what other people touched before you start.
 
 Read `ETHOS.md`. All principles apply during ingestion.
 
@@ -75,43 +74,42 @@ You are a pipeline builder. Your job is to scrape, organize, extract, validate,
 and publish data — but NEVER skip a gate. Each gate is a checkpoint where the
 human must see and approve the work before you proceed.
 
+All writes land on shared state (`soria_duckdb_staging` + Postgres). Every
+write is soft-delete reversible — but that's a safety net, not a license to
+move fast. Use `mcp__soria__pipeline_activity` to surface recent changes so
+you don't stomp on someone else's in-flight work.
+
 ---
 
-## Where code lives (git-native authoring)
+## Where code lives
 
-You're writing Python files in the env's worktree, committing them, and
-letting the server pick them up. The CLI is the dispatcher — the code itself
-is managed through git.
+Scrapers and extractors are **code** stored in the shared Postgres through
+MCP tools (`scraper_manage`, `extractor_manage`) — not files in your local
+git. Iterate via the tools' `test=True` flags, which let you pass inline
+code and dry-run without writing to shared state.
 
-| Asset | Path (in the worktree) | How it's edited |
+| Asset | Where | How it's edited |
 |---|---|---|
-| Scraper | `soria/scrapers/{name}.py` | Edit the file directly. `soria scraper test NAME --url URL` tells the server to read its copy of `scrapers/{name}.py` and run it. For dev iteration, you need a local backend running against your worktree (`make run-dev`) so the server sees your edits. |
-| Extractor code | `soria/extraction/` for built-in extractors; custom extractor code can be passed inline via `soria extract --code-file PATH --test` for dev iteration | Edit locally, test with `--code-file`, commit when working. Workspace-scoped extractor code lives in the database (see alembic migration `2026_04_02_make_extractor_code_workspace_scoped`) and is authored via the CLI extractor flow — for most pipelines, start with `soria extractor list SCRAPER` to see what exists. |
-| dbt marts + verify seed + manifests + dive components | `frontend/src/dives/dbt/models/`, `frontend/src/dives/dbt/seeds/`, `frontend/src/dives/manifests/`, `frontend/src/dives/*.tsx` | Git-native; see `/dive` for the full layout. |
-| Schema definitions | Postgres state, authored via `soria schema update` | Not file-native — state lives in the Neon branch. |
-| Value mappings | Postgres state, authored via `soria value map` | Not file-native. |
+| Scraper | Postgres (`scrapers` table) | `mcp__soria__scraper_manage(action="save", name=..., code=...)`, then `mcp__soria__scraper_run(name=..., test=True)` to dry-run. Save for real when it works. |
+| Extractor | Postgres (`extractors` table, workspace-scoped) | `mcp__soria__extractor_manage(action="save", ...)` + `mcp__soria__extraction_run(..., test=True, code=...)` for iteration. |
+| Schema columns | Postgres | `mcp__soria__schema_manage` |
+| Schema (CSV) mappings | Postgres | `mcp__soria__schema_mappings` |
+| Value mappings | Postgres | `mcp__soria__value_manage` (handled by `/map`) |
+| dbt marts + verify seed + manifests + dive components | Git (`frontend/src/dives/...`) | See `/dive`. |
 
-**The key distinction:** scrapers and extractors are CODE and live in git.
-Schemas and value mappings are DATA and live in Postgres (per env = per Neon
-branch). Promotion carries both via `soria env diff` + PR merge.
+**Key distinction:** scraper/extractor code is owned by Postgres (so everyone
+shares the latest version). Marts/manifests/React are owned by git (so dive
+changes ship via PR, not direct edits).
 
-## Git discipline
+## Reversibility
 
-Every file you write or edit in this skill must be committed before moving
-to the next gate. Uncommitted work is invisible to `/promote` and dies with
-the worktree if you `soria env teardown` prematurely.
+Every ingestion write sets `deleted_at` on soft-delete, never hard-deletes.
+Unpublishing a group, deleting a file, re-extracting over an old CSV — all
+reversible via `mcp__soria__database_mutate` setting `deleted_at = NULL`
+(respect `SOFT_DELETE_CASCADES`).
 
-At each Gate, if you wrote or modified files:
-
-```bash
-git status --short
-git add {specific files}
-git commit -m "ingest(gate N): {what you did}"
-```
-
-Commit granularity should match gates: one commit per gate is a good default.
-Don't wait until Gate 5 to commit everything — you'll lose context and make
-`soria env diff` unreadable.
+When in doubt, check `mcp__soria__pipeline_history(entity_id=...)` to see
+the sequence of events on a row.
 
 ---
 
@@ -121,29 +119,38 @@ Don't wait until Gate 5 to commit everything — you'll lose context and make
 
 **Steps:**
 1. Check if files already exist (Principle #24 — inventory first)
-   ```bash
-   soria list | grep -i {keyword}
-   soria scraper --help   # verify the subcommand surface
    ```
-2. If scraper exists and has files → skip to Gate 2
+   mcp__soria__database_query(sql="
+     SELECT name, (SELECT COUNT(*) FROM files WHERE scraper_id = s.id) AS files
+     FROM scrapers s
+     WHERE name ILIKE '%{keyword}%'
+   ")
+   ```
+2. If scraper exists and has files → skip to Gate 2.
 3. If scraper exists but no files → run it:
-   ```bash
-   soria scraper run {scraper_name}
    ```
-4. If no scraper → write one (file lives in the scrapers directory — check
-   `soria extractor list` for related extractors first):
-   - Write the scraper code in the env's worktree
-   - Test first:
-     ```bash
-     soria scraper test {scraper_name}
-     ```
-   - Save (commit in the worktree), then run:
-     ```bash
-     soria scraper run {scraper_name}
-     ```
-5. Verify: show file count, sample filenames, date range covered
-   ```bash
-   soria file list --scraper {scraper_name} --limit 20
+   mcp__soria__scraper_run(name="{scraper_name}")
+   ```
+4. If no scraper → write one. Iterate with `test=True`:
+   ```
+   mcp__soria__scraper_run(name="{scraper_name}", test=True, code="""
+     from soria.scrapers.core.base_scraper import SimpleScraper, get_html, ...
+     class MyScraper(SimpleScraper):
+         url = "..."
+         def discover_files(self): ...
+   """)
+   ```
+   When it works, save:
+   ```
+   mcp__soria__scraper_manage(action="save", name="{scraper_name}", code=...)
+   ```
+   Then run for real:
+   ```
+   mcp__soria__scraper_run(name="{scraper_name}")
+   ```
+5. Verify: show file count, sample filenames, date range:
+   ```
+   mcp__soria__file_query(scraper="{scraper_name}", limit=20)
    ```
 
 ### HTTP waterfall rule
@@ -182,10 +189,10 @@ If the URL points to a BI dashboard (`tableau.*`, `app.powerbi.com`,
 If the scraper is genuinely blocked (MFA portal, emailed reports), use the
 manual upload flow:
 
-```bash
-soria scraper upload-urls {scraper_name}   # generates presigned URLs
+```
+mcp__soria__scraper_upload_urls(scraper="{name}", count=N)   # presigned URLs
 # user uploads files via the URLs
-soria scraper confirm {scraper_name}       # ingests + triggers pipeline
+mcp__soria__scraper_confirm_uploads(scraper="{name}")         # ingest + pipeline
 ```
 
 **Never pivot to manual upload on your own.** If the scraper is blocked, say
@@ -212,38 +219,37 @@ Show the inventory. Wait for approval before organizing.
 **Goal:** Group files logically and propose the extraction schema.
 
 **Steps:**
-1. Examine file contents — look at headers, formats, structure across eras
-   ```bash
-   soria file show {file_id}
-   soria file open {file_id}   # opens URL in browser for PDF/Excel inspection
+1. Examine file contents — look at headers, formats, structure across eras:
+   ```
+   mcp__soria__file_query(file_id="{id}")            # metadata + storage key
+   mcp__soria__file_query(file_id="{id}", open=True) # presigned URL to inspect
    ```
 2. Propose groups:
    - One group per logical collection
    - Note format eras (where column names/counts changed)
 3. Create groups:
-   ```bash
-   soria group create {scraper_name} {group_name} --pattern "{glob}"
-   soria group assign {group_id} {file_id} ...
+   ```
+   mcp__soria__group_manage(action="create", scraper="{name}", name="{group_name}", pattern="{glob}")
+   mcp__soria__group_manage(action="assign", group_id="{id}", file_ids=["..."])
    ```
 4. Propose the extraction schema:
    - List every column with name, type, dimension vs metric
    - State what gets EXCLUDED and why (totals, derivable values — Principle #7)
    - Show options if there's a design decision
    - Apply via:
-     ```bash
-     soria schema update {group_id}
+     ```
+     mcp__soria__schema_manage(action="update", group_id="{id}", columns=[...])
      ```
 
 **Two paths depending on file type:**
 
-- **PDF/Excel:** Need detection + extraction pipeline. Schema defines what to
-  extract. Propose columns based on sampling the source files.
-- **CSV:** Already structured. Schema maps CSV headers to canonical column names.
-  Use:
-  ```bash
-  soria schema mappings-read {group_id}
-  soria schema mappings-update {group_id}   # apply fixes
-  ```
+- **PDF/Excel:** Need detection + extraction. Schema defines what to extract.
+  Propose columns based on sampling the source files.
+- **CSV:** Already structured. Schema maps CSV headers to canonical column names:
+   ```
+   mcp__soria__schema_mappings(action="read", group_id="{id}")
+   mcp__soria__schema_mappings(action="update", group_id="{id}", mappings={...})
+   ```
 
 **Pushback guidance:** Don't just present what's in the file. Challenge:
 - "These 3 columns are derivable. I'd exclude them. Here's the math."
@@ -265,13 +271,13 @@ Take a position. Do NOT proceed until the human approves.
    - If format eras exist, pick one from each era
 2. Run extraction on each:
    - **PDF/Excel:**
-     ```bash
-     soria detect {group_id} --files {file_id_1},{file_id_2},{file_id_3}
-     soria extract {group_id} --files {file_id_1},{file_id_2},{file_id_3}
+     ```
+     mcp__soria__detection_run(group_id="{id}", file_ids=["...","...","..."])
+     mcp__soria__extraction_run(group_id="{id}", file_ids=["...","...","..."])
      ```
    - **CSV:** Schema mapping already tested in Gate 2. Run validation:
-     ```bash
-     soria validate {group_id} --files {file_id_1},{file_id_2},{file_id_3}
+     ```
+     mcp__soria__validation_run(group_id="{id}", file_ids=["...","...","..."])
      ```
 3. For each extracted file, compare against the source (Principle #11):
    - Pull 10 specific values from the source document
@@ -287,7 +293,7 @@ Take a position. Do NOT proceed until the human approves.
    Result: 10/10 match
    ```
 
-4. If mismatches: diagnose, fix extractor, re-run samples
+4. If mismatches: diagnose, fix extractor, re-run samples.
 5. Check format-era handling: does the same extractor work across all 3?
 
 ### ⛔ GATE 3 STOP
@@ -302,20 +308,20 @@ Wait for human approval.
 
 **Steps:**
 1. Run extraction on all files in the group:
-   ```bash
-   soria extract {group_id}
    ```
-2. Monitor for failures — never silently skip a file
+   mcp__soria__extraction_run(group_id="{id}")
+   ```
+2. Monitor for failures — never silently skip a file.
 3. Run validation:
-   ```bash
-   soria validate {group_id}
+   ```
+   mcp__soria__validation_run(group_id="{id}")
    ```
 4. Post-extraction checks:
    - Total extracted vs total in group (expect 100% or explain gaps)
    - Row counts per file — reasonable? Any 0-row files?
    - Schema consistency — same columns across all outputs?
    - NULL rate scan — any unexpected NULL spikes?
-5. If failures > 5%: stop, diagnose, fix, re-run failed files
+5. If failures > 5%: stop, diagnose, fix, re-run failed files.
 
 **Present to human:**
 ```
@@ -334,39 +340,27 @@ Show summary statistics. Wait for approval before publishing.
 
 ## Gate 5: Publish + Verify (L — Load)
 
-**Goal:** Publish to the warehouse bronze layer in the current env.
+**Goal:** Publish to the warehouse bronze layer in `soria_duckdb_staging`.
 
 **Steps:**
-1. Publish to bronze in the active env (never prod directly):
-   ```bash
-   soria warehouse publish {group_id}
+1. Publish to bronze (writes `soria_duckdb_staging.bronze.{table}`):
    ```
-2. **Check warehouse status:**
-   ```bash
-   soria warehouse status {group_id}
+   mcp__soria__warehouse_manage(action="publish", group_id="{id}")
    ```
-3. **Verify row count landed:**
-   ```bash
-   soria warehouse query "SELECT COUNT(*) FROM bronze.{table_name}"
+2. Verify row count landed:
+   ```
+   mcp__soria__warehouse_query(sql="SELECT COUNT(*) FROM soria_duckdb_staging.bronze.{table_name}")
    ```
    Compare against the extraction row count. If they don't match, something
-   went wrong.
-4. **Materialize if needed** (for perf — bronze views chain through DuckLake
-   at ~2-3s per query; materialized tables are instant):
-   ```bash
-   soria warehouse materialize bronze.{table_name}
-   ```
-5. Additional publish verification:
-   - Sample query returns expected data
-   - No NULL primary keys
-6. If /plan specified L-phase verification criteria, run those checks now
+   went wrong — flip back with `mcp__soria__warehouse_manage(action="unpublish", ...)`
+   (soft-delete) and diagnose.
+3. Sample query returns expected data. No NULL primary keys.
+4. If /plan specified L-phase verification criteria, run those checks now.
 
 **Present to human:**
 ```
-Published to env: prickle-bottle
-Table: bronze.kaufman_hall__hospital_performance_metrics
-Rows published: 456,789
-Materialized: ✅ (BASE TABLE, 456,789 rows — matches)
+Published to: soria_duckdb_staging.bronze.kaufman_hall__hospital_performance_metrics
+Rows: 456,789 (matches extraction count)
 Sample query: SELECT * WHERE year = 2024 LIMIT 5 → looks correct
 ```
 
@@ -374,8 +368,9 @@ Sample query: SELECT * WHERE year = 2024 LIMIT 5 → looks correct
 Show the publish results. The pipeline is not "done" until verified. Note:
 value mapping is handled by `/map` (separate skill). Dives by `/dive`.
 
-**Suggest next step:** If values need normalization → `/map`. If data is clean
-and ready for a dive → `/dive`.
+**Suggest next step:** If values need normalization → `/map`. If data is
+clean and ready for a dive → `/dive`. If you want to move bronze files to
+prod MotherDuck → `/promote` (PR-gated).
 
 ---
 
@@ -383,17 +378,20 @@ and ready for a dive → `/dive`.
 
 When new data drops for an existing pipeline:
 
-1. **Check what's new:** `soria file list --scraper {name}` vs previous run
+1. **Check what's new:**
+   ```
+   mcp__soria__file_query(scraper="{name}", since="{last_run_timestamp}")
+   ```
 2. **Run existing extractor on new files only** — don't re-extract everything:
-   ```bash
-   soria extract {group_id} --files {new_file_ids}
-   soria validate {group_id} --files {new_file_ids}
+   ```
+   mcp__soria__extraction_run(group_id="{id}", file_ids=[new_ids])
+   mcp__soria__validation_run(group_id="{id}", file_ids=[new_ids])
    ```
 3. **Re-publish:** Incremental add to bronze:
-   ```bash
-   soria warehouse publish {group_id}
    ```
-4. **Quick verify:** Spot-check new data points
+   mcp__soria__warehouse_manage(action="publish", group_id="{id}")
+   ```
+4. **Quick verify:** Spot-check new data points.
 
 Refresh gates are softer — the pipeline is already proven. But flag anomalies:
 - New columns that didn't exist before
@@ -408,9 +406,6 @@ Refresh gates are softer — the pipeline is already proven. But flag anomalies:
 cat > ~/.soria-stack/artifacts/ingest-$(date +%Y%m%d-%H%M%S).md << 'ARTIFACT'
 # Ingest Report: [Dataset Name]
 
-## Environment
-[Active soria env]
-
 ## Pipeline Summary
 - Scraper: [name, ID]
 - Files: [count, types, date range]
@@ -423,11 +418,12 @@ cat > ~/.soria-stack/artifacts/ingest-$(date +%Y%m%d-%H%M%S).md << 'ARTIFACT'
 - Spot check: [X/X values match]
 
 ## Tables Published
-- Bronze: [table name, row count, materialized yes/no]
+- soria_duckdb_staging.bronze.[table name] — [row count]
 
 ## Next Steps
 - [ ] /map — if value mapping needed
 - [ ] /dive — if ready to build a dive
+- [ ] /promote — when ready to move bronze files to prod MotherDuck
 
 ## Outcome
 Status: [DONE | DONE_WITH_CONCERNS | BLOCKED | NEEDS_CONTEXT]
@@ -441,8 +437,8 @@ ARTIFACT
 
 When extraction, publish, or scraper runs fail or time out, invoke `/diagnose`.
 Don't retry blindly. The diagnose skill has the failure catalog for all
-subsystems (Neon, MotherDuck, S3 / managed DuckLake, DBOS Cloud, Durable
-Object event relay, Clerk, WASM, PG wire proxy).
+subsystems (MotherDuck, GCS, DBOS Cloud, Durable Object event relay, Clerk,
+WASM, PG wire proxy).
 
 ---
 
@@ -454,34 +450,35 @@ Object event relay, Clerk, WASM, PG wire proxy).
 2. **Silent failures.** A file that fails extraction is not OK to skip.
    Every file must extract or be explicitly flagged.
 
-3. **Publishing directly to prod.** Always work in a dev env first. Verify.
-   Let `/promote` handle the PR-to-prod path.
+3. **Skipping the `test=True` dry-run.** For scrapers and extractors, always
+   dry-run with inline code before `scraper_manage(action="save", ...)`.
+   Saving broken code to shared state means everyone else gets your bug.
 
 4. **Editing CSVs instead of fixing extractors.** Fix the extraction, not the
    output (Principle #6).
 
-5. **Un-materialized bronze.** If bronze isn't materialized, queries take 40
-   seconds instead of 0.02. Materialize at Gate 5.
-
-6. **Doing value mapping here.** Value mapping is `/map`. This skill gets data
+5. **Doing value mapping here.** Value mapping is `/map`. This skill gets data
    into the warehouse. `/map` normalizes it.
 
-7. **Using raw HTTP libraries.** Never import `curl_cffi`, `requests`, or
+6. **Using raw HTTP libraries.** Never import `curl_cffi`, `requests`, or
    `httpx` in scraper code. Use `get_html()` / `get_json()`.
 
-8. **Manual upload as a workaround for scraping failures.** If a scraper fails,
+7. **Manual upload as a workaround for scraping failures.** If a scraper fails,
    the fix is to fix the scraper — not to manually upload files. Manual upload
    creates a one-time pipeline that breaks the next time data updates. Only
    acceptable when the human explicitly asks or the source genuinely has no
    scrapable URL.
 
-9. **Republishing after a schema change without `--force`.** If the warehouse
-   table already exists with a different schema (e.g., you changed from
-   wide-format to long-format), `soria warehouse publish` fails with
-   "Table does not have a column with name 'x'". Re-publish with `--force` —
-   safe when the schema change is intentional, but only after completing all
-   downstream model updates (see `/dive` anti-patterns).
+8. **Republishing after a schema change without `force=True`.** If the warehouse
+   table already exists with a different schema, `warehouse_manage(action="publish")`
+   fails. Re-publish with `force=True` — safe when the schema change is
+   intentional, but only after completing all downstream model updates (see
+   `/dive` anti-patterns).
 
-10. **Running without confirming the active env.** The preamble exits if env
-    is unset or prod. If you bypassed it, you're about to write to the wrong
-    place.
+9. **Ignoring recent pipeline activity.** Before any write, check
+   `mcp__soria__pipeline_activity` — you may be about to undo someone else's
+   work or race a concurrent run.
+
+10. **Promoting bronze files to prod from here.** `/promote` handles the
+    PR-gated file-level manifest. Do not call `mcp__soria__warehouse_promote`
+    outside `/promote`.

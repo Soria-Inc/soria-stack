@@ -26,9 +26,6 @@ allowed-tools:
 mkdir -p ~/.soria-stack/artifacts
 echo "SKILL: plan"
 echo "---"
-echo "Active environment:"
-soria env status 2>&1 || echo "  (soria CLI not authed — run /env first)"
-echo "---"
 echo "Checking for status artifacts..."
 ls -t ~/.soria-stack/artifacts/status-*.md 2>/dev/null | head -3
 echo "Checking for prior plan artifacts..."
@@ -173,9 +170,6 @@ and the plan should enumerate all six things above.
 ```
 ## Plan: [Project Name]
 
-### Environment
-[Where this work will happen — dev env name, or "create a new env"]
-
 ### Goal
 [One sentence: what question this answers, for whom]
 
@@ -187,7 +181,7 @@ and the plan should enumerate all six things above.
 | T (Transform) | [status] | [specific action] | [S/M/L/XL] | [criteria] |
 | V (Value Map) | [status] | [specific action] | [S/M/L/XL] | [criteria] |
 | L (Load) | [status] | [specific action] | [S/M/L/XL] | [criteria] |
-| R (Represent — dive) | [status] | dbt marts + manifest + TSX + modals + registration + semantic checks | [S/M/L/XL] | [criteria] |
+| R (Represent — dive) | [status] | dbt marts + manifest + TSX + methodology + verify seed rows + registration | [S/M/L/XL] | [criteria] |
 
 ### Verification Plan (before we start)
 
@@ -237,12 +231,12 @@ For each cross-source join, state what it means in business terms:
 
 ### Model stack proposal
 
-- Upstream bronze/silver/gold: one per warehouse table (list them, note
-  whether they're already built)
-- dbt staging (dive project): optional, pre-processing
+- Bronze tables (published by ingest): one per source (list them, note
+  whether they're already published to `soria_duckdb_staging.bronze.*`)
+- dbt staging (dive project): `CAST` + clean, one per bronze
 - dbt intermediate (dive project): joins across staging
 - dbt marts (dive project): one per dive, the dashboard-ready output
-- dbt semantic (dive project): one per dive, the checks
+- Verify check rows (shared `verifications.csv` seed): ~15+ per dive
 
 ---
 
@@ -331,9 +325,6 @@ Expect pushback on:
 cat > ~/.soria-stack/artifacts/plan-$(date +%Y%m%d-%H%M%S).md << 'ARTIFACT'
 # Plan: [Project Name]
 
-## Environment
-[Where this will happen]
-
 ## Goal
 [What we're building, for whom]
 
@@ -383,10 +374,6 @@ This artifact is consumed by /ingest, /map, /dive, /verify, and /promote.
 6. **Giving time estimates.** Never say "this will take 3 hours" or
    "~45 minutes per source." Use t-shirt sizes (S/M/L/XL).
 
-7. **Planning an R phase without all 7 dive artifacts.** The dive isn't
+7. **Planning an R phase without all 6 dive artifacts.** The dive isn't
    "just the SQL". The R phase plan must enumerate dbt marts + manifest +
-   TSX + methodology meta + verify meta + DivesPage registration + semantic
-   checks.
-
-8. **Planning against the wrong env.** All phases happen in a specific dev
-   env. If one isn't set, the plan should say "create env first via /env".
+   TSX + methodology content + verify seed rows + DivesPage registration.

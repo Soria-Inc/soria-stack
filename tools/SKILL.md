@@ -1,129 +1,103 @@
 ---
 name: tools
-version: 2.0.0
+version: 3.0.0
 description: |
-  Verify the Soria CLI is installed and report the active environment.
-  Run at the START of every session alongside /env. This skill replaces
-  the old MCP tool loader — there are no MCP tools to load anymore.
-  All skills drive the Soria platform through the `soria` CLI.
-  If you see "soria not found" or "no active environment", run this skill
-  to diagnose and fix before doing any other work.
+  Verify the Soria MCP server is reachable and the local dev stack is
+  installed. Run at the START of every session. All skills drive the Soria
+  platform through the `mcp__soria__*` tool namespace — there is no `soria`
+  CLI. Also checks local tools needed for dive work: uv, node, dbt, make,
+  git, gh. If you see "MCP not reachable" or a missing local tool, run this
+  skill to diagnose and fix before doing any other work.
 allowed-tools:
   - Read
   - Bash
 ---
 
-# /tools — Verify CLI + Active Environment
+# /tools — Verify MCP + Local Stack
 
-You are checking that the Soria CLI is installed and that an environment is
-active. **No Soria MCP tools to load** — the Soria platform is driven
-entirely through the `soria` CLI now.
+You are confirming the session can actually do work: the Soria MCP is
+reachable and the local tools needed for dive authoring are installed.
+There is no `soria` CLI — don't look for one.
 
-External MCP tools are still allowed where skills reference them:
-`mcp__linear__*` (owned by `/ticket` — `/diagnose` and `/promote` invoke
-`/ticket` rather than calling Linear directly) and
-`mcp__openclaw__mempalace_search` (for `/lessons`, `/map`, `/dive`, `/plan`,
-`/ticket` — domain grounding and prior-session search). Those do NOT need
-to be loaded via ToolSearch at session start — Claude Code loads them on
-first use. This skill does not touch them.
+External MCP tools are owned by specific skills: `mcp__linear__*` by
+`/ticket`, `mcp__openclaw__mempalace_search` by `/lessons`/`/map`/`/dive`
+for domain grounding. Those load on first use — not this skill's job.
 
 ---
 
-## Step 1: CLI installed?
+## Step 1: Soria MCP reachable
+
+Probe with a trivial query:
+
+```
+mcp__soria__database_query(sql="SELECT 1 AS ok")
+```
+
+If it errors:
+
+```
+⚠️  Soria MCP not reachable.
+
+Check ~/.claude.json → mcpServers.soria — it should point at an HTTP
+endpoint like https://<your-dbos>.cloud.dbos.dev/mcp/. Restart Claude
+Code after edits. If auth is failing, sign in at the endpoint in your
+browser first.
+```
+
+STOP. Every pipeline skill depends on the MCP.
+
+## Step 2: Local tools
 
 ```bash
-which soria && soria --version
+for t in uv node npm dbt make git gh; do
+  if command -v "$t" >/dev/null 2>&1; then
+    printf "  ✓ %s: %s\n" "$t" "$("$t" --version 2>&1 | head -1)"
+  else
+    printf "  ✗ %s: missing\n" "$t"
+  fi
+done
 ```
 
-If missing:
+Missing tools and their install:
 
-```
-⚠️  soria CLI not installed.
+- `uv` — `brew install uv` (Python package manager; drives the soria-2 venv)
+- `node` / `npm` — `brew install node` (needed for the vite frontend)
+- `dbt` — installed in the soria-2 venv via `uv sync`; run from repo root
+- `make` — usually present on macOS; `brew install make` otherwise
+- `gh` — `brew install gh` (used by `/promote` for PR creation)
 
-Install from the soria-2 repo root:
+If `dbt` is missing but `uv` works, tell the user to run `uv sync` in the
+soria-2 repo root.
 
-    uv tool install --from ./cli soria-cli
-    soria auth setup
-    soria shell-setup >> ~/.zshrc
-    source ~/.zshrc
+## Step 3: dbt profile reachable
 
-Then re-run /tools.
-```
-
-STOP if the CLI is missing. Don't try to work around it.
-
-## Step 2: Auth configured?
+From the soria-2 checkout:
 
 ```bash
-soria env list 2>&1 | head -5
+cd frontend/src/dives/dbt 2>/dev/null && ../../../../.venv/bin/dbt debug 2>&1 | tail -10 || echo "(dbt project not present in this dir — run from soria-2 root)"
 ```
 
-If the output is `{"error": "No prod server configured. Run: soria auth setup"}`:
+`dbt debug` succeeds = MotherDuck staging is reachable with the current
+credentials (`MOTHERDUCK_TOKEN` + `MOTHERDUCK_STAGING_DATABASE` in `.env`).
+Failure usually means the `.env` isn't sourced or the token is missing.
 
-```
-⚠️  soria auth not set up.
-
-Run:
-
-    soria auth setup
-
-This prompts for the prod server URL and opens a browser for OAuth.
-
-Then re-run /tools.
-```
-
-STOP if auth isn't configured.
-
-## Step 3: Active environment?
+## Step 4: dev-https cert
 
 ```bash
-soria env status
+[ -f frontend/dev.soriaanalytics.com.pem ] && echo "  ✓ dev-https cert present" || echo "  ✗ dev-https cert missing — run: make dev-https-setup"
 ```
 
-Report what `soria env status` returns. If the output indicates no active
-env, tell the user:
-
-```
-No active environment.
-
-Run /env to list and switch to one, or /env branch to create a new dev env.
-```
-
-## Step 3b: dbt profile set up?
-
-```bash
-cd frontend/src/dives/dbt 2>/dev/null && dbt debug --target dev 2>&1 | tail -20 || echo "(dbt project not present — skip)"
-```
-
-If the dbt project exists and `dbt debug` fails, the `soria_dives` profile
-isn't configured or MotherDuck credentials are missing. Tell the user to
-check `~/.dbt/profiles.yml` or the `MOTHERDUCK_TOKEN` env var. This is a
-one-time setup that every new developer hits.
-
-## Step 4: Prod warning
-
-If the active environment is `prod`:
-
-```
-⚠️  POINTING AT PROD
-
-All write-path skills (/ingest, /map, /parent-map, /dive) will refuse to
-run against prod without explicit acknowledgment. /promote is the only
-skill that expects to touch prod.
-
-To switch to a dev env: soria env checkout <name>
-To create a new dev env: soria env branch <name>
-```
+Without the cert, `https://dev.soriaanalytics.com` won't load. One-time
+setup: `make dev-https-setup`. After that, daily is just `make dev-https`.
 
 ## Step 5: Summary
 
-Print a concise summary:
-
 ```
-Soria CLI ready.
-  Version: soria X.Y.Z
-  Auth:    configured (prod: https://...)
-  Active:  prickle-bottle (dev)
+Soria stack ready.
+  MCP:        ✓ reachable
+  Local:      uv, node, dbt, make, git, gh all present
+  dbt:        ✓ debug passes against soria_duckdb_staging
+  dev-https:  ✓ cert installed
 
 Next: /status (inventory), /plan (design work), /ingest (scrape),
       /dive (build a dive), /verify (check correctness).
@@ -138,7 +112,7 @@ Do NOT answer directly — invoke the matching skill via the Skill tool:
 
 - "What's the status of X", "let's work on X" → invoke `/status`
 - "Come up with a plan", "what should we do" → invoke `/status` first, then `/plan`
-- "Manage envs", "switch env", "new branch" → invoke `/env`
+- "Is my dev stack ok", "what am I pointed at" → invoke `/env`
 - "Scrape this", "build the pipeline", "extract" → invoke `/ingest`
 - "Value map", "normalize values", "canonical" → invoke `/map`
 - "Map parent companies" → invoke `/parent-map`
@@ -155,10 +129,9 @@ Do NOT answer directly — invoke the matching skill via the Skill tool:
 
 ## Anti-Patterns
 
-1. **Looking for MCP tools.** There are no Soria MCP tools. There is no
-   ToolSearch call to run. The `soria` CLI is the only surface.
-2. **Running other skills when the CLI is missing or auth isn't set up.**
-   Every skill depends on the CLI — fix the CLI first.
-3. **Proceeding silently when the active env is prod.** Print the warning
-   and wait for explicit user acknowledgment before suggesting any
-   write-path skill.
+1. **Looking for a `soria` CLI.** It's retired. The MCP is the entry point.
+2. **Proceeding when MCP probe failed.** Every pipeline skill depends on it.
+   Don't skip to `/status` or `/ingest` — fix the MCP first.
+3. **Confusing `dev-https` (HTTPS against prod backend) with `run-dev`
+   (full local stack).** `dev-https` is the default for soria-stack work.
+   `make run-dev` is only for people working on the backend.

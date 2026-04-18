@@ -33,7 +33,7 @@ else
   echo "READY: $B"
 fi
 
-# Pin state dir so every $B call shares one server (per soria env).
+# Pin state dir so every $B call shares one server (per git checkout).
 # Default: project .gstack/ (gstack's convention). Override with BROWSE_STATE_FILE.
 : "${BROWSE_STATE_FILE:=${_ROOT:-$HOME}/.gstack/state.json}"
 export BROWSE_STATE_FILE
