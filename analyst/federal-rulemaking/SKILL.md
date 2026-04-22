@@ -81,6 +81,50 @@ For rules without a multi-cycle structure (one-off NPRMs), use a
 per-company dot plot of $/EPS impact, ticker on Y-axis, $/EPS on X-axis,
 reference-line at $0.
 
+## Rulemaking vs. legislation — never conflate
+
+Administrative rulemaking and legislation are different machines. A CMS
+proposed rule does NOT require Congress. A statute change DOES. Mixing
+them up is the #1 error on regulatory notes and it changes the whole
+catalyst calendar.
+
+- **Pure rulemaking**: agency publishes NPRM → comment period (typically
+  30–60 days) → final rule → effective date. No Congress. Congressional
+  Review Act gives Congress a joint-resolution window but that's a
+  review-and-override mechanism, not a requirement.
+- **Requires legislation**: changes the underlying statute (Title XVIII,
+  Title XIX, IRC, etc.). The agency can't finalize a rule that goes
+  beyond its statutory authority; courts will vacate under
+  *Loper Bright* and the major-questions doctrine. Examples that
+  REQUIRE legislation: flipping default Medicare enrollment from FFS
+  to MA (alters §1851's "election" structure), changing the core
+  definition of a Medicare beneficiary, raising a capped entitlement.
+- **Hybrid / uncertain**: the agency claims authority; the industry /
+  plaintiffs say no. Name BOTH positions and name which side has the
+  credible secondary analysts (KFF, Georgetown CHIR, McDermott+,
+  Manatt) backing it.
+
+If your note conflates these, the Lead will pull it back.
+
+## Plain-English `What's next`
+
+The `What's next` section (and whats_next calendar rows) exists for a
+buy-side reader who has ~30 seconds. Every statutory / case / rule
+reference gets translated BEFORE the citation:
+
+- "§1851 election" → "current law treats traditional Medicare as the
+  default unless the senior actively elects MA."
+- "NPRM" → "a proposed rule" or "proposed rulemaking."
+- "*Loper Bright*" → "a 2024 Supreme Court ruling that removed courts'
+  deference to agency interpretations."
+- "Major-questions doctrine" → "the rule that agencies can't use vague
+  statutory language to make big policy decisions — Congress has to
+  speak plainly."
+
+Cite the original underneath if needed, but translate first. If the
+reader has to open a 40-page regulation or a Supreme Court opinion to
+understand the calendar row, it's not a calendar — it's homework.
+
 ## Traps
 
 - **Don't quote the rule's rate in isolation.** 2.48% means nothing
@@ -99,3 +143,8 @@ reference-line at $0.
   responses and cost-sharing cascades. Compare the RIA to an independent
   estimate (MedPAC, CBO, a trade association's actuarial brief) and
   show both.
+- **Don't cite the statute/rule text itself when a secondary analyst has
+  discussed it.** The reader can't verify §1851 in 30 seconds; they can
+  verify "KFF confirms this requires legislation" in one click. Reach
+  for the primary text only if no credible secondary exists, or if the
+  exact statutory language IS the insight.
