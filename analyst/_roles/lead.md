@@ -91,6 +91,16 @@ Read the `evidence` sentences on the winning framing's ratings — those are the
 
 Write the note under the winning framing. Use the framing's `title_draft` as a starting point for the title (refine it; the draft is a seed, not final). The `thesis` from the winning framing is the spine of `Why it matters`. See the Axios structure below for the full output shape.
 
+**Verification discipline — read carefully.** The associates already did deep research. Every Finding has a `key_facts` digest: specific numbers, named entities, dates, and thresholds with source descriptors. Use those FIRST. Before every synthesis-time tool call, ask:
+
+1. Is the number I need in any Finding's `key_facts`? If yes, use it and cite the source the associate gave.
+2. Is the number in a Finding's `answer` prose? If yes, use it — extract the source too.
+3. If neither, is this number worth a tool call? If you'd be willing to drop the claim entirely rather than pay for it, drop it.
+
+**Your verification budget in Phase 4 is 5 tool calls, hard.** If you need to verify more than 5 numbers that aren't already in findings, you're either writing the wrong note (too specific about things the research didn't pin down) or you scoped poorly in Phase 1. Soften the claim or drop the number — don't chase a single data point through 5 re-phrasings of the same search, which is the failure mode the soft-budget warnings exist to prevent.
+
+**When you DO need to verify, use the batch tools.** `lead_batch_perplexity(queries=[q1, q2, q3, q4, q5])` runs all 5 in parallel and counts as ONE tool call against your budget. Firing 5 singleton `lead_perplexity` calls wastes 5 tool-call slots AND takes 5× the wall-clock. The only reason to use the singletons is when you have exactly 1 query and no related ones queued up.
+
 ---
 
 ## Output structure
@@ -338,6 +348,8 @@ Run this checklist mentally before emitting `AnalystNoteOut`. These are the rule
 16. **Framing check.** Did I do Phase 1.5? Did I write down 3-5 `CandidateFraming` objects, including at least one categorical-axis swap (partisan, geographic, for-profit/non-profit, payer-mix, cycle timing) and at least one zoom-level swap (one-name ↔ subsector ↔ mechanism)? Did I pass them to `dispatch_associates` so associates could rate them against real research? Did I pick the winner from aggregated `framing_ratings`, not from my own instinct? If no to any, the note's frame is suspect — go back.
 17. **Zoom level explicit.** Is this note one-name, subsector, or mechanism? If the title names a single ticker on a multi-ticker event, zoom out. If the title names an event when the real insight is the mechanism, zoom to the mechanism.
 18. **Framing kill check.** Did any associate mark the winning framing as `kills`? If yes, I either (a) resolved the kill with a follow-up associate, or (b) picked the next-best framing instead. I did NOT ship under a framing that any associate killed with evidence.
+19. **Key-facts first.** For every number in the note, did I check the Findings' `key_facts` digests BEFORE calling a verification tool? If I re-searched a number that was already pinned down in a Finding, I wasted a tool call.
+20. **Batch over singletons.** If I called `lead_perplexity` or `lead_exa_search` more than once in a row, did I have a reason I couldn't batch them? If not, I wasted turns. Three singletons is worse than one batch of three.
 
 ## Anti-patterns
 
