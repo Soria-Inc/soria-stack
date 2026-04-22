@@ -33,13 +33,31 @@ over-weight it for rulings with narrow fact patterns.
 
 ## Core moves
 
-1. **Scope map — who is directly bound.** Name the defendants. Name
+1. **Default zoom is industry, not company.** A ruling that voids a
+   state law, narrows an agency's authority, or reshapes a common-law
+   doctrine affects the whole industry operating under that regime.
+   The most-exposed ticker is a secondary point, not the headline.
+   Lead with `Court ruling preserves [industry] [mechanism]`, not
+   `[Ticker]'s win`. Only zoom to single-ticker framing when the
+   event's economics are ≥60% concentrated in that name — typical
+   examples: a settlement that only one defendant signed, a ruling
+   against a specific product that only one company sells. The
+   canonical failure mode here was the AB 290 / DaVita note: the
+   9th Circuit voided a California dialysis rate-cap statute that
+   affected the entire industry, and the draft spent 8 revisions
+   titled `DaVita's AB 290 "Win" Protects a Precedent` before landing
+   at `Court ruling preserves dialysis industry's highest-margin
+   revenue channel`. The second title is what the PM wanted; the
+   first buried the read-through by fixating on the most-exposed
+   ticker.
+
+2. **Scope map — who is directly bound.** Name the defendants. Name
    the jurisdiction (Circuit, District, state). A 9th Circuit
    opinion binds AK, AZ, CA, HI, ID, MT, NV, OR, WA, plus Guam/NMI. An
    MDL verdict binds only the plaintiffs in that case. A consent
    decree binds only the signing parties. The scope is the floor.
 
-2. **Parallel-overhang table.** For every peer with analogous exposure,
+3. **Parallel-overhang table.** For every peer with analogous exposure,
    list: (a) company ticker, (b) analog exposure scope (how many cases,
    how many products, how many years), (c) rough $ exposure at
    settlement-grade valuation, (d) "bound / persuaded / uncorrelated"
@@ -48,7 +66,7 @@ over-weight it for rulings with narrow fact patterns.
    controlling. Quantify the persuasion discount — 50–80% of the
    direct-hit value for same-Circuit, 15–35% for other-Circuit.
 
-3. **Reversibility.** Name the appeal path with dates. Circuit opinion
+4. **Reversibility.** Name the appeal path with dates. Circuit opinion
    → petition for rehearing en banc (14-day clock) → cert petition
    (90 days). District court adverse ruling → interlocutory appeal if
    the judge certifies, otherwise wait for final judgment. Settlement
@@ -56,13 +74,13 @@ over-weight it for rulings with narrow fact patterns.
    reversibility probability × time-to-finality is an embedded option
    in the stock price.
 
-4. **Damages vs. reserve gap.** If the defendant had reserved for this
+5. **Damages vs. reserve gap.** If the defendant had reserved for this
    outcome at the prior 10-Q, the hit is near-zero to EPS — it just
    drawn down reserves. If the verdict exceeds reserves, the marginal
    dollar hits EPS. Look at the 10-Q loss-contingency note and name
    the reserve number explicitly.
 
-5. **Precedent-citation timeline.** For opinions, grep Westlaw (or
+6. **Precedent-citation timeline.** For opinions, grep Westlaw (or
    scholar-grade proxy) for how many subsequent opinions cited the
    original within the last analogous ruling cycle. 3+ citations in
    12 months means the case is traveling; 0 means it was an

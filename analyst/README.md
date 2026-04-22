@@ -65,14 +65,19 @@ disciplines (title, first-sentence, citations, chart-coherence,
 numbers-cited-or-footnoted); these skills cover what's specific to ONE
 event type.
 
-## Current skills (6)
+## Current skills (8)
 
+Event-type playbooks:
 - `federal-rulemaking/` — CMS/FDA/HHS/Treasury NPRMs, Final Rules, rate notices
 - `executive-order/` — Presidential EOs, memos, proclamations
 - `state-regulation/` — state statutes, regs, AG actions, ballot measures
 - `legal-ruling/` — court decisions, MDL verdicts, settlements, consent decrees
 - `drug-device-approval/` — FDA approvals, CRLs, label expansions, ODAC votes
 - `tax-policy/` — federal + state tax policy affecting issuer cashflows
+
+Cross-cutting (read in Phase 1.5 on every event, not event-type-specific):
+- `framing-axes/` — checklist of categorical splits to pressure-test the first-instinct frame
+- `mechanism-vs-event/` — separating the news peg from the analyst insight
 
 ## Update cycle
 

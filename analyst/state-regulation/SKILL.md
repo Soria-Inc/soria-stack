@@ -44,26 +44,41 @@ Jersey, Oregon, and Colorado adopt similar language within 18 months.
    states for THIS specific policy type. Don't just say "this is a
    blue-state policy."
 
-2. **Sibling-state extrapolation.** For each of the siblings, name the
+2. **Partisan / geographic split check.** When multiple states adopt a
+   policy, the *split itself* is often the analyst insight — not any
+   single state's choice. Before committing to a frame, ask: does the
+   adoption / strictness / scope split cleanly on party control, on
+   census region, on Medicaid-expansion status, or on urban-vs-rural
+   share of the population? The Indiana/Idaho Medicaid work-rule case
+   is the canonical example: seven states had adopted work rules with
+   varying lookback windows by the time the Indiana/Idaho news hit,
+   and the real story was that every red-state adopter picked the
+   strictest allowable window while every blue-state adopter picked
+   the loosest. The individual states were just data points; the
+   partisan split was the insight. Run this check whenever the event
+   involves ≥3 states — call `read_skill("framing-axes")` for the full
+   axis menu.
+
+3. **Sibling-state extrapolation.** For each of the siblings, name the
    nearest-analog legislation currently pending, already introduced, or
    in an active committee-study phase. If you can find 3 pending bills
    that copy language from the enacted state, you have a 12-month
    adoption forecast.
 
-3. **Direct-impact estimate in the adopting state.** Walk the economics
+4. **Direct-impact estimate in the adopting state.** Walk the economics
    for the state: state-level population × penetration × affected
    revenue × margin impact. For state-level policy, the 10-Q segment
    disclosures are almost never granular enough — use the companies'
    annual state-by-state filings with NAIC (for insurers) or state DOI
    rate filings (for rate-regulated lines), or CMS public use files.
 
-4. **Read-across discounting.** The sibling-state impact is probability-
+5. **Read-across discounting.** The sibling-state impact is probability-
    weighted by adoption probability AND timing. A CA law passed today
    that 5 sibling states "will probably" adopt over 18–36 months is not
    5× the CA impact — it's ~1.5–2.5× at NPV, applying 40–60% probability
    and 15–30% discount per year.
 
-5. **What changed about the political path.** A statute that passed a
+6. **What changed about the political path.** A statute that passed a
    chamber but was vetoed is a data point. A statute that the governor
    signed vs. a statute that became law without signature vs. a statute
    that got a ballot-measure override are all different political
