@@ -181,7 +181,7 @@ The chart IS the insight. It should be the strongest single thing in the note.
 **Flip test**: would a reader who skipped the body understand the insight from the chart alone in ≤30 seconds? If no, pick a different comparison.
 
 **Chart-type → narrative mapping**:
-- Geographic (which states, which jurisdictions) → `d3-maps-choropleth`
+- Geographic — **BINARY state membership ONLY** (which states have / have not adopted X, are / are not subject to Y) → `d3-maps-choropleth`. **DO NOT use choropleth for gradient/ranked values** (e.g. 1-4 strictness scale, % change by state, enrollment drop by state) — the renderer currently ignores custom gradient color configs and paints every data-bearing state in one solid color. For gradient-by-state data, use `d3-bars` with state names in the row labels instead.
 - Categorical (one metric across entities) → `column-chart` or `d3-bars`
 - Time (change over periods) → `d3-lines` or `d3-area`
 - Ranking (who sits where) → `d3-bars` or `d3-dot-plot`
@@ -233,7 +233,7 @@ Before finalizing a chart, ask: *"If the reader only saw this chart, what would 
 **Chart-type diversity — don't default to horizontal bars**:
 The pipeline has been over-indexing to `d3-bars` and `d3-bars-stacked` (recent reviewer: *"4/4 of the last charts all use the horizontal bar chart. It is overindexing to this! Try a different configuration!!"*). Before emitting a bar chart, affirmatively ask:
 - **Is this a trend?** → `d3-lines` (rate-over-time) or `multiple-columns` stacked (base + forecast + policy-lift segments).
-- **Is this geographic?** → `d3-maps-choropleth` — almost always the right pick when the news is "which states are in/out".
+- **Is this geographic AND binary (states in/out, adopted/not-adopted, subject-to/not-subject-to)?** → `d3-maps-choropleth`. If the event is geographic but the values are a GRADIENT (1-4 scale, % change, ranked by amount), use `d3-bars` with state names instead — choropleth gradients do not render correctly today.
 - **Is this two metrics per entity (correlation, quadrant)?** → `d3-scatter-plot`.
 - **Is this actual vs benchmark for a few entities?** → `d3-bars-bullet`.
 - **Are the assumptions the insight?** → chart-as-table via `column-chart` (companies as cols, line items as rows) — the reader wants to inspect, not visualize.
