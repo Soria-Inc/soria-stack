@@ -16,7 +16,7 @@ the analyst's system prompt via a `@analyst_agent.instructions` hook.
 Each entry is `name` + `description`. The bodies are NOT loaded by
 default — they're lazy-fetched when the analyst calls the `read_skill`
 tool with a skill name it picked off the index. This keeps the per-event
-prompt small (the 6 descriptions) while making the full playbook
+prompt small (the skill descriptions) while making the full playbook
 available on demand.
 
 Anthropic prompt caching is on (`anthropic_cache_instructions=True` on
@@ -65,13 +65,14 @@ disciplines (title, first-sentence, citations, chart-coherence,
 numbers-cited-or-footnoted); these skills cover what's specific to ONE
 event type.
 
-## Current skills (8)
+## Current skills (9)
 
 Event-type playbooks:
 - `federal-rulemaking/` — CMS/FDA/HHS/Treasury NPRMs, Final Rules, rate notices
 - `executive-order/` — Presidential EOs, memos, proclamations
 - `state-regulation/` — state statutes, regs, AG actions, ballot measures
 - `legal-ruling/` — court decisions, MDL verdicts, settlements, consent decrees
+- `leadership-governance-and-execution/` — CEO/CFO/board succession, segment-leader changes, and management restructurings
 - `drug-device-approval/` — FDA approvals, CRLs, label expansions, ODAC votes
 - `tax-policy/` — federal + state tax policy affecting issuer cashflows
 
