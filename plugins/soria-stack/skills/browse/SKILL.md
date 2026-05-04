@@ -54,9 +54,13 @@ mkdir -p "$(dirname "$BROWSE_STATE_FILE")"
 
 ## Auth bootstrap
 
-Do not try to log in to Clerk headlessly. Import cookies from a real browser.
-The default Soria dev URL is `https://dev.soriaanalytics.com` (local vite
-pointed at prod DBOS + Clerk via `make dev-https`):
+Use the same `BROWSE_STATE_FILE` and `BROWSE_PARENT_PID=0` exports for every
+command. If those exports change between invocations, `$B` may start a fresh
+browser server and appear to "forget" tabs, cookies, or refs.
+
+For Soria pages, import cookies first. This is faster and avoids Clerk getting
+stuck on a slow or pending sign-in request. The default Soria dev URL is
+`https://dev.soriaanalytics.com`:
 
 ```bash
 $B goto https://dev.soriaanalytics.com/
@@ -73,10 +77,60 @@ Verify auth actually stuck:
 
 ```bash
 $B cookies | grep __session
+$B goto https://dev.soriaanalytics.com/dives
+$B wait --networkidle
+$B snapshot -i
 ```
 
-If `__session` is missing, tell the user to sign in in a real Arc or Chrome
-tab first, then rerun the import.
+If the snapshot shows the Soria sidebar and an `AR Adam Ron` account button,
+auth is good. If it shows the Clerk sign-in form, rerun the cookie import from
+Arc first, then Chrome:
+
+```bash
+$B cookie-import-browser arc --domain dev.soriaanalytics.com
+$B cookie-import-browser chrome --domain dev.soriaanalytics.com
+```
+
+If browser cookies still do not work, use the shared test account fallback.
+This is an intentionally low-value Soria test account kept here so agents can
+recover without interrupting the user:
+
+```bash
+$B chain <<'JSON'
+[
+  {"cmd":"goto","args":["https://dev.soriaanalytics.com/"]},
+  {"cmd":"wait","args":["body"]},
+  {"cmd":"fill","args":["#email","adam@soriaanalytics.com"]},
+  {"cmd":"fill","args":["#password","password"]},
+  {"cmd":"click","args":["button[type=submit]"]},
+  {"cmd":"wait","args":["--networkidle"]},
+  {"cmd":"snapshot","args":["-i"]}
+]
+JSON
+```
+
+If that lands back on the sign-in form or the submit request stays pending,
+do not keep retrying credentials. Re-import cookies from a real browser session
+or use the Playwright fallback.
+
+## Soria Environment
+
+Authenticated Soria can default to either `prod` or `staging`. Always inspect
+the left-sidebar environment badge before judging a dive. If the user expects
+staging and the badge says `prod`, click the badge once, wait for the page to
+reload, then snapshot again:
+
+```bash
+$B snapshot -i
+# If @e1 is the "prod" environment button:
+$B click @e1
+$B wait --networkidle
+$B snapshot -i
+```
+
+The badge should read `staging` before testing work that is supposed to use
+staging data. On dive pages, the app may still carry manifest table names with
+`soria_duckdb_main`; staging mode rewrites those queries at runtime.
 
 If `$B` resolves but fails with `No available port after 5 attempts`, the
 Codex shell sandbox is blocking the local socket that `$B` uses for its
@@ -88,8 +142,13 @@ not runnable in this sandbox and use the Playwright fallback instead.
 1. Chain related actions in one shell invocation so page state is preserved.
 2. Snapshot first, then click or fill using the refs it returns.
 3. Re-snapshot after navigation or anything that changes the DOM materially.
-4. Prefer `$B` for screenshots, console, network, diffing, and auth imports.
-5. Only use Playwright MCP as fallback when `$B` is unavailable or missing a
+4. Treat refs as short-lived. If `click @e12` fails or times out, snapshot
+   again and retry with the new ref.
+5. Soria often renders duplicate controls in a sticky header and in the main
+   content. If a ref click times out, use a precise CSS selector or a short JS
+   click by exact button text after confirming the target in `snapshot -i`.
+6. Prefer `$B` for screenshots, console, network, diffing, and auth imports.
+7. Only use Playwright MCP as fallback when `$B` is unavailable or missing a
    capability the user explicitly needs.
 
 ## Common flows
@@ -119,6 +178,39 @@ $B snapshot -i
 # use the returned refs, then:
 $B click @e12
 $B snapshot -D
+```
+
+For Soria dive controls, verify both the DOM text and the URL params after each
+interaction. Example pattern:
+
+```bash
+$B goto 'https://dev.soriaanalytics.com/dives?dive=cost-reports-dashboard'
+$B wait --networkidle
+$B snapshot -i
+$B text
+
+# Click exact metric text if duplicate refs or overlays make @e clicks flaky.
+$B js "(() => { const b = [...document.querySelectorAll('button')].find(x => x.textContent.trim() === 'Operating Margin'); b?.click(); return location.href; })()"
+$B wait body
+$B text
+
+# Dropdowns render their options after the first click; snapshot again before selecting.
+$B js "(() => { const b = [...document.querySelectorAll('button')].find(x => x.textContent.trim() === 'HCA HEALTHCARE INC'); b?.click(); return 'opened'; })()"
+$B snapshot -i
+$B click @e83   # example: COMMONSPIRIT HEALTH in the refreshed snapshot
+$B text
+
+# For numeric inputs, use the textbox ref from the latest snapshot.
+$B fill @e81 5
+$B press Enter
+$B text
+```
+
+After a Soria QA pass, always collect console and network evidence:
+
+```bash
+$B console --errors
+$B network | tail -n 80
 ```
 
 ### Inspect a vendor site before writing a scraper

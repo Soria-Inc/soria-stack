@@ -19,13 +19,15 @@ allowed-tools:
 
 ```bash
 # Resolve the vendored $B binary. Order: project worktree → global skills dir.
-_ROOT=$(git rev-parse --show-toplevel 2>/dev/null)
+_ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
 B=""
 for candidate in \
+  "$_ROOT/browse/vendor/dist/browse" \
+  "$_ROOT/plugins/soria-stack/skills/browse/vendor/dist/browse" \
   "$_ROOT/.claude/skills/soria-stack/browse/vendor/dist/browse" \
   "$HOME/.claude/skills/soria-stack/browse/vendor/dist/browse" \
   "$HOME/.claude/skills/browse/vendor/dist/browse"; do
-  [ -n "$candidate" ] && [ -x "$candidate" ] && B="$candidate" && break
+  [ -x "$candidate" ] && B="$candidate" && break
 done
 if [ -z "$B" ]; then
   echo "NEEDS_SETUP — run: cd ~/.claude/skills/soria-stack/browse && ./build.sh"
@@ -65,57 +67,97 @@ unannounced.
 `/dashboard-review` and `/review` (both dive-specific) call `browse` under the hood. You
 can also call `$B` directly for one-off exploration.
 
-## Authenticating against Soria (localhost + prod)
+## Authenticating against Soria
 
-Clerk rate-limits headless Chromium aggressively — **don't try to fill the
-login form from `$B`**. Instead, sign in once in your real browser, then copy
-the cookies into `$B`'s session.
+Use the same `BROWSE_STATE_FILE` and `BROWSE_PARENT_PID=0` exports for every
+command. If those exports change between invocations, `$B` may start a fresh
+browser server and appear to "forget" tabs, cookies, or refs.
 
-### One-time per laptop: import Clerk cookies
+For Soria pages, import cookies first. This is faster and avoids Clerk getting
+stuck on a slow or pending sign-in request.
 
 ```bash
-# 1. Sign in to the target in your normal Arc / Chrome tab.
-#    For local dev: http://localhost:5173
-#    For prod:      https://app.soria.com  (adjust as needed)
+# Dev app.
+$B goto https://dev.soriaanalytics.com/
+$B cookie-import-browser arc --domain dev.soriaanalytics.com
 
-# 2. Import cookies for localhost (or the prod domain).
+# Local dev, when testing localhost.
 $B goto http://localhost:5173/
 $B cookie-import-browser arc --domain localhost
-# Or: $B cookie-import-browser chrome --domain localhost
 
-# 3. On macOS, the first import triggers a Keychain prompt
-#    ("Arc Safe Storage" or "Chrome Safe Storage"). Click "Always Allow" so
-#    it won't prompt again.
-
-# 4. Verify auth worked — assert __session cookie is present.
-#    Arc may have expired; cookie-import will still succeed (13 cookies imported)
-#    but __session won't be among them. Check explicitly.
-if ! $B cookies 2>/dev/null | grep -q '"__session"'; then
-  echo "AUTH_FAILED: no __session cookie after import — real-browser session likely expired"
-  echo "Fix: re-sign in at http://localhost:5173 in Arc/Chrome (normal tab, not incognito), then re-run cookie-import-browser."
-  exit 1
-fi
-
-# 5. Visual confirmation.
-$B goto http://localhost:5173/dives
-$B snapshot -c | head -5     # should show the nav, not the sign-in form
+# Prod/canary, when explicitly testing prod.
+$B cookie-import-browser arc --domain soriaanalytics.com
 ```
 
-If the snapshot shows `[textbox] "Email"` and `[button] "Sign in"`, auth
-didn't stick — most likely your real-browser session expired. Re-sign-in in
-Arc/Chrome and re-run `cookie-import-browser`. Watch for `__client_uat=0`
-in the cookies — that's the "signed out" sentinel; `__session` is the JWT
-that proves signed-in.
+On macOS, the first import may trigger a Keychain prompt for Arc or Chrome
+safe storage. Click "Always Allow" so it will not prompt again.
+
+Verify auth actually stuck:
+
+```bash
+$B cookies | grep __session
+$B goto https://dev.soriaanalytics.com/dives
+$B wait --networkidle
+$B snapshot -i
+```
+
+If the snapshot shows the Soria sidebar and an `AR Adam Ron` account button,
+auth is good. If it shows the Clerk sign-in form, rerun the cookie import from
+Arc first, then Chrome:
+
+```bash
+$B cookie-import-browser arc --domain dev.soriaanalytics.com
+$B cookie-import-browser chrome --domain dev.soriaanalytics.com
+```
+
+If browser cookies still do not work, use the shared test account fallback.
+This is an intentionally low-value Soria test account kept here so agents can
+recover without interrupting the user:
+
+```bash
+$B chain <<'JSON'
+[
+  {"cmd":"goto","args":["https://dev.soriaanalytics.com/"]},
+  {"cmd":"wait","args":["body"]},
+  {"cmd":"fill","args":["#email","adam@soriaanalytics.com"]},
+  {"cmd":"fill","args":["#password","password"]},
+  {"cmd":"click","args":["button[type=submit]"]},
+  {"cmd":"wait","args":["--networkidle"]},
+  {"cmd":"snapshot","args":["-i"]}
+]
+JSON
+```
+
+If that lands back on the sign-in form or the submit request stays pending,
+do not keep retrying credentials. Re-import cookies from a real browser session
+or use the Playwright fallback.
 
 ### Re-importing cookies
 
 Sessions expire. When `$B` starts showing the login form again, re-run
 `cookie-import-browser`. No code change needed.
 
-### Never do this
+### Soria environment
 
-- Don't fill `input[type=email]` + `input[type=password]` + click submit from
-  `$B`. Clerk will 429 and you'll burn 10+ minutes of throttle time.
+Authenticated Soria can default to either `prod` or `staging`. Always inspect
+the left-sidebar environment badge before judging a dive. If the user expects
+staging and the badge says `prod`, click the badge once, wait for the page to
+reload, then snapshot again:
+
+```bash
+$B snapshot -i
+# If @e1 is the "prod" environment button:
+$B click @e1
+$B wait --networkidle
+$B snapshot -i
+```
+
+The badge should read `staging` before testing work that is supposed to use
+staging data. On dive pages, the app may still carry manifest table names with
+`soria_duckdb_main`; staging mode rewrites those queries at runtime.
+
+### Never commit
+
 - Don't commit cookies or secrets that leak from `$B cookies` output.
 
 ## Chain commands in one shell
@@ -139,6 +181,11 @@ $B snapshot -c
 2. Use `@e1`, `@e2`, … as selectors in `click`, `fill`, `is`, `attrs`.
 3. Refs invalidate on navigation — re-snapshot after `goto`, `click` that
    loads a new page, `reload`, etc.
+4. Treat refs as short-lived. If `click @e12` fails or times out, snapshot
+   again and retry with the new ref.
+5. Soria often renders duplicate controls in a sticky header and in the main
+   content. If a ref click times out, use a precise CSS selector or a short JS
+   click by exact button text after confirming the target in `snapshot -i`.
 
 ---
 
@@ -169,6 +216,34 @@ $B is visible ".dashboard"       # success state present?
 $B snapshot                      # baseline
 $B click @e3                     # do something
 $B snapshot -D                   # unified diff shows exactly what changed
+```
+
+### 3a. Verify Soria dive controls
+```bash
+$B goto 'https://dev.soriaanalytics.com/dives?dive=cost-reports-dashboard'
+$B wait --networkidle
+$B snapshot -i
+$B text
+
+# Click exact metric text if duplicate refs or overlays make @e clicks flaky.
+$B js "(() => { const b = [...document.querySelectorAll('button')].find(x => x.textContent.trim() === 'Operating Margin'); b?.click(); return location.href; })()"
+$B wait body
+$B text
+
+# Dropdowns render their options after the first click; snapshot again before selecting.
+$B js "(() => { const b = [...document.querySelectorAll('button')].find(x => x.textContent.trim() === 'HCA HEALTHCARE INC'); b?.click(); return 'opened'; })()"
+$B snapshot -i
+$B click @e83   # example: COMMONSPIRIT HEALTH in the refreshed snapshot
+$B text
+
+# For numeric inputs, use the textbox ref from the latest snapshot.
+$B fill @e81 5
+$B press Enter
+$B text
+
+# Always collect evidence after a Soria QA pass.
+$B console --errors
+$B network | tail -n 80
 ```
 
 ### 4. Visual evidence for bug reports
