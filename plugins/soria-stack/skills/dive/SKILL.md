@@ -33,6 +33,42 @@ before acting.
 - grain-first design, not just visual assembly
 - data survey via `mcp__soria__warehouse_query` before writing SQL
 
+## Reusable Dive Design Principles
+
+- Treat a dive as a consistent analytical instrument, not a collection of
+  unrelated charts.
+- Prefer a stable page pattern: KPI row, selected-row chart, then a pivot
+  table.
+- Tables should usually put time on the column axis and the primary dimension
+  on rows.
+- Use URL state for every meaningful control and selected row.
+- When a table row represents an entity, clicking it should update the
+  selected entity and redraw the chart.
+- Default the selected entity to the first meaningful ranked row, not a
+  hardcoded company unless product context requires it.
+- For company or entity comparisons, prefer Top N cohorts on a stable size
+  metric, plus `Other` and `Industry Total` where applicable.
+- Keep ranking basis separate from displayed metric. Avoid ranking by noisy
+  ratios like margin or mix percentage unless that is explicitly the analysis.
+- Compute `Other`, totals, and ratios from summed numerators and denominators;
+  do not average percentages.
+- Suppress empty or meaningless rows. Avoid tables with many blanks, single
+  low-value rows, or rows that do not add analytical value.
+- Hide controls with only one meaningful option. Do not add redundant toggles
+  or dropdowns when row click already controls selection.
+- Use tree or pivot rows for subdimensions such as product mix, payer mix,
+  rating bucket mix, or revenue category mix while preserving time as columns.
+- KPIs should be view-specific and should explain the selected row or the
+  market context, not reuse generic headline numbers.
+- Charts should focus on the selected row, use the simplest legible visual
+  form, and match existing dive styling.
+- Build grain-first: model the analytical grain in dbt before composing React
+  views.
+- Prefer separate narrow marts or normalized semantic marts over pushing
+  complex cohort/math logic into React.
+- Verification rows should cover key totals, formula denominators, and known
+  anchor values before the dive is considered ready.
+
 ## Notes
 
 - Methodology lives in the manifest as JSX. `DiveShell` surfaces it; don't
