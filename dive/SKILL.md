@@ -162,6 +162,14 @@ The toggle is implemented via the `X-SQLMESH-ENV` header (legacy name;
 doesn't mean SQLMesh is involved) on every request from `dashboardClient`.
 Customer view locks to prod — the badge is disabled there.
 
+Dive manifests should still declare prod-looking table names such as
+`soria_duckdb_main.main_marts.{model}`. The frontend rewrites that catalog to
+the selected data environment at query time, so the exact same manifest hits
+`soria_duckdb_staging.main_marts.{model}` when the badge is set to staging.
+Do not "fix" a local/staging dive by hardcoding `soria_duckdb_staging` in the
+manifest. If the staging badge renders the dive but `soria_duckdb_main` lacks
+the table, that is an expected pre-promotion state.
+
 For fast in-chat inspection without opening a browser, `/preview` queries
 `soria_duckdb_staging` directly via `mcp__soria__warehouse_query`.
 
@@ -355,10 +363,12 @@ schema is `main`, so `+schema: marts` produces `main_marts`. Fully qualified:
 There is no `prod` target in the committed `profiles.yml` — CI injects it
 at deploy time so you can't accidentally `dbt run --target prod` locally.
 
-The manifest points at `soria_duckdb_main.main_marts.{model}` (prod) — the
-frontend in `make dev-https` mode is pointed at the prod DBOS API which
-queries prod MotherDuck. To iterate, use `/preview` to query staging via
-`mcp__soria__warehouse_query`.
+The manifest points at `soria_duckdb_main.main_marts.{model}`. That is the
+stable manifest convention, not proof the current browser query is using prod:
+`use-dive-query.ts` rewrites `soria_duckdb_main` to the selected environment.
+Use the staging badge for browser iteration against
+`soria_duckdb_staging.main_marts.{model}`; use `/preview` when you want the
+same staging inspection rendered in chat via `mcp__soria__warehouse_query`.
 
 ### Bronze sources
 - Published by `mcp__soria__warehouse_manage(action="publish")`
@@ -772,10 +782,10 @@ mcp__soria__warehouse_query(sql="
 ### Running the dive in a browser
 
 Default flow is `make dev-https` — vite at `https://dev.soriaanalytics.com`
-proxied to prod DBOS. Note this shows **prod** data, so new marts models
-won't appear until the PR merges. For local validation of your SQL
-against staging, use `/preview` (reads staging via MCP and renders pivot
-tables in chat).
+proxied to DBOS. The data environment is selected by the staging/prod badge.
+Set the badge to **staging** to validate local dbt output in the browser;
+set it to **prod** only for the customer-view sanity check. `/preview` is the
+chat-native staging alternative.
 
 The `vite-dbt-sync.ts` Vite plugin copies `dbt/target/manifest.json` +
 `run_results.json` into `frontend/public/dbt-docs/` on change — this is

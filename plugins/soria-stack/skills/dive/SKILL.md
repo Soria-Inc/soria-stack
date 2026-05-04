@@ -21,7 +21,10 @@ before acting.
 - manifests at `frontend/src/dives/manifests/{id}.manifest.tsx` — **`.tsx`**
   because the `methodology` field is JSX. Manifest owns `title`, `overview`,
   `methodology`, `table`, `modelId`, `verificationModel`, `columns`,
-  `metrics`, `filters`, `defaultTopN`.
+  `metrics`, `filters`, `defaultTopN`. Manifest `table` values should use
+  the prod-looking catalog name (`soria_duckdb_main.main_marts...`); the
+  frontend rewrites that catalog to staging when the environment badge is on
+  staging.
 - React components at `frontend/src/dives/{id}.tsx`. Compose
   `DiveShell` + `useDiveData(manifest, filters)` + `useDiveParam` (URL
   state) + `useDiveVerifications(manifest.verificationModel)` +
@@ -38,6 +41,16 @@ before acting.
   branch on mode in the component.
 - Local `dbt run` writes to `soria_duckdb_staging`. Prod target is absent
   from committed `profiles.yml`; CI injects it on PR merge.
+- Do **not** "fix" a dive manifest by changing `soria_duckdb_main` to
+  `soria_duckdb_staging`. `use-dive-query.ts` intentionally rewrites
+  `soria_duckdb_main` to the selected data environment. A local/staging dive
+  should therefore have a manifest table like
+  `soria_duckdb_main.main_marts.some_dive`, while the actual query hits
+  `soria_duckdb_staging.main_marts.some_dive` when the EnvironmentBadge is
+  set to staging.
+- If a dive works in staging but `soria_duckdb_main.main_marts.<model>` is
+  missing, that is expected before promotion. Treat prod absence as a
+  promotion/build state, not evidence that the staging dive is wired wrong.
 - **Iteration loop:** local `dbt run` → open `dev.soriaanalytics.com` →
   click the `EnvironmentBadge` (amber/green pill) to **staging** to see
   your changes; toggle back to **prod** for the customer view. Default is
