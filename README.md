@@ -120,7 +120,10 @@ Developer-focused skills:
 | `/dev-env` | Start, inspect, or repair a branch-local Soria app environment for engineering work. |
 | `/test` | Choose and run the right proof layer: unit, integration, boundary, runtime, pipeline E2E, or deployed proof. |
 | `/code-review` | Review Soria diffs against repo-specific engineering patterns and test-boundary expectations. |
-| `/seed-dev-tp` | Seed a dev Turbopuffer namespace with real chunk rows for search/chunk runtime and E2E tests. |
+
+Repo-local helper scripts, such as `soria-2/scripts/seed-dev-tp.py`, are not
+standalone skills. `/dev-env` and `/test` should route to those scripts when a
+specific proof needs them.
 
 ## Installation for Codex
 

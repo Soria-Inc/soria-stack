@@ -24,7 +24,7 @@ before acting.
 - decide whether the lesson belongs in an existing skill or needs a new skill
 - route engineering lessons deliberately: test decisions to `test`, review
   rules to `code-review`, dev environment procedure to `dev-env`, TP runtime
-  helpers to `seed-dev-tp`, and current codebase facts to app repo
+  helper usage to `test` or `dev-env`, and current codebase facts to app repo
   `docs/engineering/*`
 - locate the target skill/new skill and compare any branch-local patch against
   canonical `Soria-Inc/soria-stack`

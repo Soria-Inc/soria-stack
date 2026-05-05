@@ -25,6 +25,6 @@ change and pick the needed proof layer:
 6. Preview/staging/prod proof when configured
 
 Use repo scripts such as `scripts/create-test-db.sh` and
-`scripts/run-tests.sh`. For TP/search/chunk runtime proof, use `seed-dev-tp`
-before claiming the dev namespace has real chunks.
-
+`scripts/run-tests.sh`. For TP/search/chunk runtime proof, use the app repo
+helper `scripts/seed-dev-tp.py` before claiming the dev namespace has real
+chunks.

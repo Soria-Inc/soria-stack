@@ -18,9 +18,9 @@ description: |
   /diagnose (failure triage), /ticket (file structured tickets mid-session),
   /promote (warehouse_diff + warehouse_promote + PR + CI), /newsroom (news
   pipeline ops), /lessons (retrospective), /browse (persistent headless
-  Chromium for verification), plus engineering skills /dev-env, /test,
-  /code-review, and /seed-dev-tp for branch-local app work, test evidence,
-  Soria-specific code review, and Turbopuffer-backed runtime tests.
+  Chromium for verification), plus engineering skills /dev-env, /test, and
+  /code-review for branch-local app work, test evidence, and Soria-specific
+  code review.
   Suggest the right skill by stage: starting a session → /tools;
   investigating what exists → /status; planning work → /plan; building a
   pipeline → /ingest; normalizing values → /map; resolving parent companies
@@ -84,7 +84,6 @@ Engineering skills operate inside app repo worktrees and follow that repo's
 | Entering or repairing a branch-local app dev environment | `/dev-env` |
 | Testing Soria engineering changes or choosing E2E proof | `/test` |
 | Reviewing a Soria code diff or PR | `/code-review` |
-| Seeding dev Turbopuffer for search/chunk runtime tests | `/seed-dev-tp` |
 
 ## The sequence
 

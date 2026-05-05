@@ -29,9 +29,10 @@ This file exists for agents (Claude Code, Clawd, etc.) that look for an
 5. **Read `ETHOS.md`** before any data pipeline work. All numbered
    principles apply.
 6. **Engineering skills are first-class.** Use `/dev-env` for branch-local
-   app environments, `/test` for proof selection and E2E testing,
-   `/code-review` for Soria-specific code review, and `/seed-dev-tp` when
-   Turbopuffer-backed runtime tests need real chunks in a dev namespace.
+   app environments, `/test` for proof selection and E2E testing, and
+   `/code-review` for Soria-specific code review. Repo-local helper scripts,
+   such as `soria-2/scripts/seed-dev-tp.py`, are implementation details that
+   those skills may route to when needed.
 7. **Lessons close the loop.** Repeated test/review/dev-env discoveries
    belong back in this repo's skills; current codebase invariants belong in
    the app repo's `docs/engineering/*`.

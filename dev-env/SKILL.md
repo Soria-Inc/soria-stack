@@ -26,8 +26,9 @@ In `soria-2`, a branch dev environment gives the worktree:
 - a local Vite frontend
 
 It does not clone Turbopuffer. If the test touches chunks, search,
-`chunk_delete`, `patch_for_file`, embeddings, or TP cleanup, use
-`/seed-dev-tp` after the dev stack is running.
+`chunk_delete`, `patch_for_file`, embeddings, or TP cleanup, the relevant test
+flow may need the app repo helper script `scripts/seed-dev-tp.py` after the dev
+stack is running.
 
 ## Fast Path
 
@@ -101,7 +102,17 @@ empty.
 Before runtime or E2E tests for search/chunk behavior:
 
 ```text
-/dev-env -> make run-dev -> /seed-dev-tp -> /test
+/dev-env -> make run-dev -> scripts/seed-dev-tp.py when needed -> /test
+```
+
+Use the script from the app repo, not from SoriaStack. Dry-run first:
+
+```bash
+python scripts/seed-dev-tp.py \
+  --source-namespace soria_chunks_prod \
+  --target-namespace "$TURBOPUFFER_NAMESPACE" \
+  --file-ids <file_uuid> \
+  --dry-run
 ```
 
 Do not claim search/chunk runtime proof until the target TP namespace contains
@@ -117,4 +128,3 @@ soria env teardown --dry-run
 ```
 
 Show the dry-run result and ask before running teardown without `--dry-run`.
-

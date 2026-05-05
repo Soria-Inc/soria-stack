@@ -115,7 +115,6 @@ slower Chrome-first browser tools.
 - Engineering dev env: `/dev-env`
 - Engineering tests and E2E proof: `/test`
 - Soria code review: `/code-review`
-- Dev Turbopuffer seed for search/chunk runtime tests: `/seed-dev-tp`
 - Retrospective: `/lessons`
 
 If a live page, screenshot, auth import, or UI repro is involved, switch to

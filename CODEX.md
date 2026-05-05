@@ -41,7 +41,9 @@ The Codex plugin also exposes Soria engineering workflows:
 - `/dev-env` — branch-local app env setup and repair
 - `/test` — choose unit, integration, boundary, runtime, pipeline E2E, or deployed proof
 - `/code-review` — Soria-specific diff review and test-boundary judgment
-- `/seed-dev-tp` — seed dev Turbopuffer namespaces for search/chunk runtime tests
+
+Repo-local helper scripts, such as `soria-2/scripts/seed-dev-tp.py`, are
+called by the relevant workflow skill rather than exposed as Codex skills.
 
 When working inside `soria-2`, read that repo's `AGENTS.md`/`CLAUDE.md` first.
 Repo-local rules and scripts are the source of truth.

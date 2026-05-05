@@ -72,7 +72,7 @@ repo, locate it before applying approved skill changes.
 - repeated test decision -> `soria-stack/test`
 - repeated review rule -> `soria-stack/code-review`
 - branch dev environment procedure -> `soria-stack/dev-env`
-- TP/search runtime helper procedure -> `soria-stack/seed-dev-tp`
+- TP/search runtime helper usage -> `soria-stack/test` or `soria-stack/dev-env`
 - codebase invariant or architecture explanation -> app repo `docs/engineering/*`
 - executable helper -> app repo `scripts/` plus the relevant docs
 

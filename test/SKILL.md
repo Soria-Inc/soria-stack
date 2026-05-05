@@ -60,7 +60,7 @@ Scraper, extractor, parsing, validation, warehouse publish, chunks, embeddings?
 
 Turbopuffer/search/chunk delete/patch path?
   -> Layer 2 plus Layer 4/5
-  -> use /seed-dev-tp when the dev namespace needs real chunks
+  -> use the repo-local TP seed helper when the dev namespace needs real chunks
 
 Frontend UX or browser behavior?
   -> build/lint as available
@@ -141,13 +141,14 @@ Dev envs do not clone Turbopuffer. For search/chunk runtime tests:
 
 ```text
 /dev-env
-/seed-dev-tp
+python scripts/seed-dev-tp.py --dry-run ...
 /test
 ```
 
-`/seed-dev-tp` copies real vectors/content/metadata into the dev TP namespace
-without re-running Modal/LlamaParse. It does not copy Postgres rows and does
-not create namespace schema.
+`scripts/seed-dev-tp.py` is an app repo helper, not a standalone skill. It
+copies real vectors/content/metadata into the dev TP namespace without
+re-running Modal/LlamaParse. It does not copy Postgres rows and does not create
+namespace schema.
 
 ## Gotchas
 
@@ -171,4 +172,3 @@ Proven: <what boundary was exercised>
 Not proven: <remaining risk>
 Next: <review / more tests / fix>
 ```
-

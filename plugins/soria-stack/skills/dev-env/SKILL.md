@@ -20,5 +20,5 @@ Use the canonical top-level skill logic:
 - report frontend/backend URLs and logs
 - distinguish branch dev envs from data/dive `/env`
 - explain that Postgres and MotherDuck are cloned but Turbopuffer is not
-- route chunk/search/delete runtime tests to `seed-dev-tp`
-
+- route chunk/search/delete runtime tests to the app repo helper
+  `scripts/seed-dev-tp.py` when real dev TP rows are needed

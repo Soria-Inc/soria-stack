@@ -26,7 +26,7 @@
   "interface": {
     "displayName": "Soria Stack",
     "shortDescription": "Soria workflow guidance, engineering tests/review, and fast $B browser QA for Codex",
-    "longDescription": "Brings the Soria pipeline, dive, and engineering workflows from Soria-Inc/soria-stack into Codex. Routes pipeline verbs through the Soria MCP (mcp__soria__*), authors dbt SQL and React dives locally in git, and adds branch dev-env, test, code-review, and seed-dev-tp skills for Soria app engineering work.",
+    "longDescription": "Brings the Soria pipeline, dive, and engineering workflows from Soria-Inc/soria-stack into Codex. Routes pipeline verbs through the Soria MCP (mcp__soria__*), authors dbt SQL and React dives locally in git, and adds branch dev-env, test, and code-review skills for Soria app engineering work.",
     "developerName": "Soria Analytics",
     "category": "Coding",
     "capabilities": [
