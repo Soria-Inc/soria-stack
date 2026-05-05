@@ -1,114 +1,164 @@
-# SoriaStack — Data Pipeline Skills
+# SoriaStack - Agent Skills for Soria Work
 
-SoriaStack is a collection of SKILL.md files that give AI agents structured
-roles for data pipeline work at Soria Analytics. Seventeen skills covering the
-full ETVLR cycle: Extract → Transform → Value-map → Load → Represent.
+SoriaStack is the canonical skill pack for Soria Analytics agent workflows.
+It is not a generic prompt library. It captures how the team wants agents to
+operate on Soria's data platform, dives, developer tooling, QA, promotion, and
+retrospectives.
 
-All skills drive the Soria platform through the **`soria` MCP server** (the
-`mcp__soria__*` tool namespace). There is no `soria` CLI — every pipeline
-verb is an MCP tool. SQL and React dives are authored locally in git.
+The pack supports both Claude-style skills and Codex plugin skills:
+
+- Claude-facing skills live as top-level directories such as `status/`,
+  `dive/`, and `lessons/`.
+- Codex-facing wrappers live under `plugins/soria-stack/skills/`.
+- Shared behavior should be kept in sync across both surfaces when both tools
+  need the lesson.
+
+## Operating Philosophy
+
+1. **MCP first.** Soria platform work runs through the `soria` MCP server
+   (`mcp__soria__*`). There is no `soria` CLI fallback for modern SoriaStack
+   work.
+2. **Shared state, reversible writes.** MCP writes hit shared Postgres and
+   `soria_duckdb_staging`. Prefer reversible operations with audit trails over
+   fake local isolation. Postgres rows use soft deletes and `PipelineEvent`
+   history.
+3. **Git-native product work.** dbt SQL, manifests, React dive components,
+   verify seeds, and skill text are authored locally in git, reviewed in diffs,
+   and promoted through PR/CI.
+4. **Evidence before claims.** Agents should show rows, counts, browser
+   evidence, traces, or diffs before saying work is correct.
+5. **Skills are executable team memory.** Add or update a skill when a workflow
+   is repeatable and Soria-specific enough that the next agent should not
+   rediscover it from scratch.
+6. **Lessons close the loop.** `/lessons` turns concrete session evidence into
+   durable skill updates in this repo.
 
 ## Architecture
 
 ```
-                  ┌───────────────────────────────────────────┐
-                  │  mcp__soria__* tools (one shared MCP)     │
-                  │  scraper_run · detection_run · extraction │
-                  │  validation · schema_manage · value_manage│
-                  │  warehouse_manage · warehouse_query       │
-                  └──────────────────┬────────────────────────┘
-                                     ▼
-        ┌───────────────────────┬───────────────────────────┐
-        │  shared Postgres      │  soria_duckdb_staging     │
-        │  (scrapers/groups/    │  (bronze + dbt staging/   │
-        │   files/schemas)      │   intermediate/marts)     │
-        └───────────────────────┴───────────────────────────┘
-                                     ▲
-                                     │ local dbt run
-                      ┌──────────────┴───────────────┐
-                      │  frontend/src/dives/dbt/     │  ← git
-                      │  (staging → intermediate →   │
-                      │   marts, verifications seed) │
-                      └──────────────┬───────────────┘
-                                     │ make dev-https
-                                     ▼
+                  +-------------------------------------------+
+                  |  mcp__soria__* tools (one shared MCP)     |
+                  |  scraper_run, detection_run, extraction   |
+                  |  validation, schema_manage, value_manage  |
+                  |  warehouse_manage, warehouse_query        |
+                  +------------------+------------------------+
+                                     |
+                                     v
+        +-----------------------+---------------------------+
+        |  shared Postgres      |  soria_duckdb_staging     |
+        |  scrapers/groups/     |  bronze + dbt staging/    |
+        |  files/schemas        |  intermediate/marts       |
+        +-----------------------+---------------------------+
+                                     ^
+                                     | local dbt run
+                      +--------------+---------------+
+                      |  frontend/src/dives/dbt/     |  <- git
+                      |  staging -> intermediate ->  |
+                      |  marts, verifications seed   |
+                      +--------------+---------------+
+                                     |
+                                     v
                     https://dev.soriaanalytics.com
-                    (local vite → prod DBOS API + Clerk,
-                     DuckDB-WASM + Postgres wire proxy,
-                     MethodologyModal + VerifyModal,
-                     staging/prod badge ⟷ X-SQLMESH-ENV)
-                                     │
-                          git push → gh pr create
-                                     ▼
-                        CI: dbt-deploy.yml (marts → prod)
-                            promote.yml  (bronze files → prod)
-                                     ▼
+                    local vite -> prod DBOS API + Clerk
+                    staging/prod badge -> X-SQLMESH-ENV
+                                     |
+                          git push -> PR -> CI
+                                     |
+                                     v
                           soria_duckdb_main (prod)
 ```
 
-Every MCP write to Postgres is **soft-delete reversible** via `deleted_at` /
-`deleted_by` columns and a `PipelineEvent` audit trail. There are no hard
-deletes. To undo, flip `deleted_at` through `mcp__soria__database_mutate`
-(see `/diagnose` for the pattern).
+Classic backend-rendered dashboards are retired. Modern dives are file-based:
+dbt models, manifests, React components, and verification rows live under the
+Soria app repo. The browser switches between staging and prod through the
+environment badge.
 
-**The staging/prod badge** in the app chrome (`EnvironmentBadge`) is the
-dev iteration surface. Amber "staging" routes dive queries to
-`soria_duckdb_staging` (where your local `dbt run` just landed); green
-"prod" routes to `soria_duckdb_main` (customer-facing). Default is prod;
-customer view locks to prod. Plumbed via the `X-SQLMESH-ENV` header
-(legacy name — SQLMesh itself is retired).
+## Skill Types
 
-Classic backend-rendered dashboards (AG-Grid + `@dashboard` YAML) are gone.
-The backend is a thin FastAPI shell: auth, scraper management, news, file
-processing. Dive data flows from MotherDuck to the browser.
+SoriaStack can contain two kinds of skills:
 
-## Available skills
+- **Pipeline/product skills** for Soria data work: inventory, planning,
+  ingestion, value mapping, dives, verification, browser review, promotion, and
+  newsroom workflows.
+- **Developer skills** for Soria-specific engineering workflows: local setup,
+  CI debugging, MCP debugging, frontend runtime checks, test protocol, release
+  hygiene, or repo maintenance.
 
-Skills live in their own directories. Invoke them by name (e.g., `/status`).
+Developer-focused skills are welcome when they encode repeatable
+Soria-specific behavior. Avoid adding generic engineering advice that would
+apply equally to any codebase.
+
+## Available Skills
+
+Invoke skills by name, for example `/status` or `/dive`.
 
 | Skill | What it does |
 |-------|-------------|
-| `/browse` | Persistent headless Chromium (`$B`) for dive verification, bug repro, scraper recon. Vendored from gstack (MIT). `/dashboard-review` calls this under the hood. |
-| `/env` | Sanity-check the dev stack — MCP reachable, `make dev-https` cert present, prod URL responding. There are no isolated envs; this skill is a preflight, not a provisioner. |
-| `/tools` | Verify the `mcp__soria__*` tools load and the local dev stack (uv, node, dbt, make, git) is installed. |
-| `/status` | Investigate what exists for a concept — pipeline inventory via `mcp__soria__database_query` + `mcp__soria__warehouse_query` + dive filesystem walk. |
-| `/plan` | ETVLR orchestrator — break work into phases, plan verification upfront. |
-| `/ingest` | Scrape, organize, extract, validate, and publish through five hard-stop gates. |
-| `/map` | Value mapping — normalize raw values to canonical forms across eras. |
-| `/parent-map` | Resolve company names/codes to ultimate parent companies via parallel.ai. One centralized table, all data sources. |
-| `/dive` | Build a dive end-to-end: dbt marts SQL + manifest + TSX component + `DivesPage.tsx` registration + rows in the shared `verifications.csv` seed + methodology content wired into the component. Grain-first thinking, domain grounding, SQL review checklist. |
-| `/preview` | Render a dive as markdown tables in chat — read the manifest, build SQL, query MotherDuck via MCP, format as a pivot. |
-| `/verify` | Prove data is correct. Pipeline verify, Model verify, Semantic verify — three tiers of evidence per mode. |
-| `/dashboard-review` | Ship-readiness review for a dive. Runs six gates end-to-end via `/browse` against `https://dev.soriaanalytics.com`: render, data correctness (seed + warehouse cross-ref), interactivity, methodology/verify modals, edge cases, perf. Aggregates into one report; hands off to `/ticket` or `/diagnose` on failure. |
-| `/diagnose` | Triage-first failure investigation: silent failures, data traces, schema mismatches, infrastructure, quality. Invokes `/ticket` when ticketing is needed. |
-| `/ticket` | File a structured Linear ticket mid-session. Owns all Linear writes. Scans for duplicates and active interactive-agent runs before filing. Side-quest — returns the user to their previous skill. |
-| `/promote` | Safe path to production. `mcp__soria__warehouse_diff` → `mcp__soria__warehouse_promote` (posts PR manifest) → `git push` → `gh pr create` → CI (`dbt-deploy.yml` + `promote.yml`) materializes to prod MotherDuck on merge. |
-| `/newsroom` | News pipeline ops — branch management, prompt tuning, source review. Driven by `mcp__soria__news_*`. |
-| `/lessons` | Retrospective — review recent work, find patterns, propose principle updates. |
+| `/browse` | Fast persistent Chromium (`$B`) for dive verification, bug repro, scraper recon, screenshots, console, and network checks. |
+| `/env` | Preflight the Soria dev stack: MCP reachable, dev cert present, recent shared-state activity visible. |
+| `/tools` | Verify MCP tools and local dependencies such as `uv`, `node`, `dbt`, `make`, `git`, and `gh`. |
+| `/status` | Read-only inventory for a concept, scraper, group, warehouse table, or dive. |
+| `/plan` | ETVLR planning: Extract, Transform, Value-map, Load, Represent, with verification defined before implementation. |
+| `/ingest` | Scrape, organize, detect, extract, validate, map, and publish bronze through MCP tools. |
+| `/map` | Normalize raw values to canonical forms with evidence. |
+| `/parent-map` | Maintain centralized parent-company mapping and ownership timelines. |
+| `/dive` | Build or revise a dive: dbt marts SQL, manifest, TSX component, `DivesPage` registration, verification rows, and methodology. |
+| `/preview` | Render a dive as markdown tables in chat by reading the manifest and querying MotherDuck. |
+| `/verify` | Prove data correctness with warehouse checks, seed comparisons, and external benchmarks when available. |
+| `/dashboard-review` | Ship-readiness browser QA for a dive via `/browse`. |
+| `/diagnose` | Triage broken workflows before guessing: schema mismatches, missing data, silent failures, runtime issues. |
+| `/ticket` | Capture a structured issue in Linear or as a GitHub-ready issue draft. |
+| `/promote` | Safe production path: diff, verification, browser QA, PR, promotion manifest, CI. |
+| `/newsroom` | News pipeline operations: branches, prompts, sources, articles, events, and newsletter workflow. |
+| `/lessons` | Retrospective and skill-maintenance loop. Turns evidence into durable updates in this repo. |
 
-## Principles
+## Installation for Codex
 
-Read `ETHOS.md` before any data pipeline work. Includes:
+Prerequisites:
 
-- Numbered data principles extracted from real sessions
-- Resolver pattern (context efficiency)
-- Completion & escalation protocol
-- Anti-sycophancy & simplicity guidance
-- MCP-first tool invocation
-- PR-gated promotion semantics
-- Dual-mode loading invariant for dives
-- Methodology-per-element as "done"
+- Codex is installed and can load local skills/plugins.
+- The `soria` MCP server is configured in the Codex client, usually as an HTTP
+  endpoint like `https://<your-dbos>.cloud.dbos.dev/mcp/`.
+- This repo is cloned to a stable path. Use any stable path, but do not copy
+  individual skills around by hand.
 
-See `MCP_TOOL_MAP.md` for the concise mapping of every `mcp__soria__*` tool
-the skills call, grouped by domain.
+Recommended setup:
 
-## Installation
+```bash
+git clone https://github.com/Soria-Inc/soria-stack ~/soria-stack
+cd ~/soria-stack
+./install-codex.sh
+```
 
-This skill pack assumes the `soria` MCP server is already configured in
-Claude Code (`~/.claude.json` → `mcpServers.soria`, typically an HTTP
-endpoint at `https://<your-dbos>.cloud.dbos.dev/mcp/`). No CLI to install.
+`install-codex.sh` creates or updates:
 
-Clone this repo and run the installer:
+```text
+~/plugins/soria-stack -> <repo>/plugins/soria-stack
+~/.agents/plugins/marketplace.json
+```
+
+Some Codex sessions also expect top-level skill directories under
+`~/.codex/skills`. In that case, add direct symlinks from Codex's skill home to
+the plugin skills:
+
+```bash
+mkdir -p ~/.codex/skills
+for skill_dir in ~/plugins/soria-stack/skills/*; do
+  [ -f "$skill_dir/SKILL.md" ] || continue
+  ln -sfn "$skill_dir" "$HOME/.codex/skills/$(basename "$skill_dir")"
+done
+```
+
+The important rule is that symlinks should point back into the git clone. Do
+not copy skill folders into `~/.codex/skills`; copied skills go stale.
+
+Restart Codex or start a fresh session after changing plugin or skill
+symlinks.
+
+## Installation for Claude Code
+
+Claude Code reads flat top-level skill directories from `~/.claude/skills`.
+Clone or symlink this repo into that directory, then run the installer:
 
 ```bash
 git clone https://github.com/Soria-Inc/soria-stack ~/.claude/skills/soria-stack
@@ -116,56 +166,141 @@ cd ~/.claude/skills/soria-stack
 ./install.sh
 ```
 
-The installer creates symlinks like `~/.claude/skills/ingest -> soria-stack/ingest`
-for every skill. It's idempotent — rerun any time after `git pull` to pick
-up new skills, remove stale symlinks, or repoint moved targets.
+The installer creates symlinks like:
 
-Verify in a fresh Claude Code session:
-
-```
-/tools    # verify MCP + local stack
-/status   # pipeline recon
+```text
+~/.claude/skills/ingest -> soria-stack/ingest
+~/.claude/skills/dive -> soria-stack/dive
+~/.claude/skills/lessons -> soria-stack/lessons
 ```
 
-## Keeping the pack up to date
+It is idempotent. Rerun it after `git pull` to pick up added, removed, or moved
+skills.
+
+## How Symlinks Should Work
+
+Use symlinks to expose canonical repo content to each agent runtime:
+
+- `~/plugins/soria-stack` should point at `<repo>/plugins/soria-stack` for the
+  Codex plugin.
+- `~/.codex/skills/<name>` may point at
+  `~/plugins/soria-stack/skills/<name>` for top-level Codex skill discovery.
+- `~/.claude/skills/<name>` should point at `soria-stack/<name>` for
+  Claude-style skills.
+
+This lets `git pull` update the skill text that every symlink resolves to.
+Only rerun installers when skill directories are added, removed, renamed, or
+when a symlink target has moved.
+
+## Keeping the Pack Up To Date
+
+Codex:
+
+```bash
+cd ~/soria-stack
+git pull --ff-only
+./install-codex.sh
+mkdir -p ~/.codex/skills
+for skill_dir in ~/plugins/soria-stack/skills/*; do
+  [ -f "$skill_dir/SKILL.md" ] || continue
+  ln -sfn "$skill_dir" "$HOME/.codex/skills/$(basename "$skill_dir")"
+done
+```
+
+Claude Code:
 
 ```bash
 cd ~/.claude/skills/soria-stack
-git pull
-./install.sh   # propagate any new/removed skills
+git pull --ff-only
+./install.sh
 ```
 
-Most updates propagate automatically because top-level symlinks point into
-the pack — `git pull` rewrites the content the symlinks resolve to.
-Re-running `install.sh` is only strictly necessary when skills are added or
-removed, but running it every time is cheap and safe.
+Then start a fresh agent session and run:
 
-## Skill chaining (ETVLR)
-
-```
-/tools (verify MCP + local dev stack)
-   ↓
-/status → status report (what exists, what's missing)
-   ↓
-/plan → ETVLR plan (phases, verification criteria, sequencing)
-   ↓
-/ingest → ingest report (files, schema, extraction results, bronze tables)
-   ↓
-/map → mapping report (canonical values, decisions made)
-   ↓
-/dive → dive spec (grain, dbt model, manifest, TSX, modals, semantic checks)
-   ↓
-/verify → scorecard (semantic check results, tier evidence, confidence)
-   ↓
-/promote → promotion report (PR URL, CI status, canary results)
-   ↓
-/lessons → retro report (patterns, principle updates) [periodic]
-
-   + /dashboard-review (browser QA via make dev-https)
-   + /preview (render a dive in chat — any time)
-   + /diagnose (enters from any phase when something breaks)
+```text
+/tools
+/status
 ```
 
-Artifacts saved to `~/.soria-stack/artifacts/`. Each skill reads prior
-artifacts and writes its own. Every artifact includes completion status and
-lessons learned.
+## Daily Workflow
+
+Most work follows this path:
+
+```text
+/tools
+  -> /status
+  -> /plan
+  -> /ingest or /dive
+  -> /verify
+  -> /dashboard-review when UI proof is needed
+  -> /promote when ready to land
+  -> /lessons when the session produced durable learning
+```
+
+Use `/preview` any time a dive should be inspected in chat. Use `/diagnose`
+from any phase when reality does not match the expected workflow.
+
+## Adding New Skills
+
+New developer-focused skills are fine. Add one when the behavior is
+Soria-specific, repeatable, and useful for future agents.
+
+For each new skill:
+
+1. Pick a short command-style name, such as `ci-fix`, `frontend-debug`, or
+   `mcp-debug`.
+2. Decide the surfaces:
+   - Claude-facing: `<name>/SKILL.md`
+   - Codex-facing: `plugins/soria-stack/skills/<name>/SKILL.md`
+   - Both, if both agent runtimes should use it
+3. Include frontmatter with `name`, `description`, and relevant metadata.
+4. Document:
+   - when to use it
+   - when not to use it
+   - preferred tools and commands
+   - safety rules
+   - verification or exit criteria
+   - what should be updated if the workflow changes
+5. Update this README's skill table when the skill is durable.
+6. Run the relevant installer or symlink refresh locally, then test in a fresh
+   agent session.
+
+Good developer-skill candidates include Soria-specific CI debugging, MCP tool
+surface debugging, frontend runtime checks, local dev stack repair, release
+checks, or test protocol. Generic code review advice or broad engineering
+style guidance belongs somewhere else.
+
+## `/lessons` Flow
+
+Use `/lessons` when a session reveals something the next agent should know:
+
+- a repeated failure mode
+- a successful workflow pattern
+- a confusing setup issue
+- a missing MCP/tool capability
+- a user preference that affects future Soria work
+- a "remember this" instruction
+
+The `/lessons` workflow:
+
+1. Review concrete evidence from the session: diffs, commands, outputs, browser
+   traces, MCP calls, tickets, or notes.
+2. Decide whether the lesson belongs in an existing skill, a new skill, this
+   README, `ETHOS.md`, or `MCP_TOOL_MAP.md`.
+3. Search for stray copies in current worktrees, `~/.claude/skills`,
+   `~/.codex/skills`, plugin wrappers, and backups before editing.
+4. Update the canonical `Soria-Inc/soria-stack` repo. Do not patch temporary
+   checkouts or copied skill folders as the source of truth.
+5. If both Claude and Codex need the behavior, update both the root skill and
+   `plugins/soria-stack/skills/<name>/SKILL.md`.
+6. Keep the lesson specific and actionable. Prefer a concrete guardrail,
+   command, or routing rule over generic retrospective text.
+7. Commit and push the change so the symlinked installations can pick it up on
+   the next `git pull`.
+
+## Reference Docs
+
+- `ETHOS.md` contains the broader operating principles.
+- `MCP_TOOL_MAP.md` maps Soria workflows to `mcp__soria__*` tools.
+- `plugins/soria-stack/references/codex-adapter.md` explains how the Codex
+  wrappers translate the canonical Claude skill pack.
