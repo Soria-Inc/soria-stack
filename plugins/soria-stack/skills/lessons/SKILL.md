@@ -21,8 +21,11 @@ before acting.
 - identify repeat failures, successful patterns, and principle updates
 - treat "capture this", "why did this take so long", and "make sure we
   remember this" as possible skill-update requests
-- locate the target skill and compare any branch-local patch against canonical
-  `Soria-Inc/soria-stack`
+- decide whether the lesson belongs in an existing skill or needs a new skill
+- locate the target skill/new skill and compare any branch-local patch against
+  canonical `Soria-Inc/soria-stack`
+- propose a concrete target and reviewable diff before editing unless the user
+  explicitly approved direct landing
 - update the canonical skill repo, not a temporary `soria-2` checkout or
   backup copy
 - update both surfaces when needed:
@@ -38,12 +41,17 @@ When an approved lesson changes skill behavior:
 
 1. Verify the canonical repo with `git remote -v`; expected remote is
    `https://github.com/Soria-Inc/soria-stack`.
-2. Identify the skill that should absorb the lesson (`browse`, `dive`,
-   `ingest`, `verify`, etc.).
-3. Search for the lesson in likely stray locations: current worktree,
+2. Decide whether an existing skill should absorb the lesson or whether a new
+   skill is warranted. Prefer existing skills for gates, anti-patterns, and
+   trigger clarifications; propose a new skill for repeatable workflows with a
+   distinct entrypoint, tool surface, or domain.
+3. Identify the target skill or new skill name.
+4. Search for the lesson in likely stray locations: current worktree,
    `~/.claude/skills`, `~/.codex/skills`, plugin wrappers, and backups.
-4. Port only the lesson into canonical `soria-stack`. Do not wholesale copy
+5. Present the target, rationale, evidence, and proposed diff. If creating a
+   new skill, include frontmatter, first-pass body, and any references/scripts.
+6. Port only the lesson into canonical `soria-stack`. Do not wholesale copy
    branch-local files whose metadata or repo assumptions point at `soria-2`.
-5. Update both the Claude-facing skill and the Codex-facing wrapper when both
+7. Update both the Claude-facing skill and the Codex-facing wrapper when both
    should change.
-6. Show the diff or, if the user approved direct landing, commit and push.
+8. Show the diff or, if the user approved direct landing, commit and push.

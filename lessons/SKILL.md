@@ -185,11 +185,48 @@ Would have prevented: [What specific error this addresses]
 - **CLI surface gaps** — commands skills need that don't exist in `soria` yet
 
 For each skill update proposal, identify:
-- The target skill (`browse`, `dive`, `ingest`, `verify`, etc.)
+- The target skill (`browse`, `dive`, `ingest`, `verify`, etc.) or the new
+  skill name to create
 - The evidence that triggered the update
 - Whether the change belongs in the Claude-facing skill, the Codex plugin
   wrapper, or both
 - Whether any matching lesson is already present in canonical `soria-stack`
+
+Decide whether to update an existing skill or propose a new skill:
+
+- Add to an existing skill when the lesson changes how an existing workflow
+  should run, adds a gate, clarifies a known failure mode, or improves a
+  trigger description.
+- Propose a new skill when the lesson describes a repeatable workflow with its
+  own entrypoint, a distinct tool/runtime surface, a separate decision process,
+  or a domain that would bloat existing skills.
+- Do not create a new skill for one-off context, narrow examples, or guidance
+  that belongs as a short rule inside an existing skill.
+
+When proposing a skill change, include the exact target and a reviewable diff:
+
+```text
+PROPOSED SKILL CHANGE:
+Target: existing skill `<skill>` | new skill `<new-skill>`
+Files:
+- <skill>/SKILL.md
+- plugins/soria-stack/skills/<skill>/SKILL.md
+
+Why this target:
+[Why this belongs here instead of another existing skill or a new skill.]
+
+Evidence:
+[Session, artifact, screenshot, command output, or user correction.]
+
+Proposed diff:
+```diff
+[Unified diff or concise patch sketch.]
+```
+```
+
+For a new skill proposal, include initial frontmatter, the first-pass body,
+and which references/scripts/assets it needs. Keep the first version narrow;
+prefer a concise `SKILL.md` plus references over a large all-in-one skill.
 
 ### Open Questions
 - Decisions that came up in sessions but weren't resolved
@@ -219,7 +256,7 @@ RETRO REPORT: [Date Range]
 [Each proposal with evidence and reasoning]
 
 ## Proposed Skill Changes
-[Each proposal with evidence]
+[Each proposal with target existing/new skill, rationale, evidence, and diff]
 
 ## MCP Gaps Identified
 [`mcp__soria__*` tools skills need that don't exist]
@@ -247,10 +284,13 @@ After the human approves specific proposals:
 4. When a skill has both surfaces, update both:
    - Claude-facing: `<skill>/SKILL.md`
    - Codex-facing: `plugins/soria-stack/skills/<skill>/SKILL.md`
-5. Preserve canonical metadata that points at `https://github.com/Soria-Inc/soria-stack`.
+5. For new skills, create both the Claude-facing skill directory and the
+   Codex-facing wrapper under `plugins/soria-stack/skills/`, unless the skill
+   is intentionally Claude-only or Codex-only.
+6. Preserve canonical metadata that points at `https://github.com/Soria-Inc/soria-stack`.
    Do not copy repo-local `soria-2` metadata into the canonical skill repo.
-6. Review the diff and make sure only approved skill/principle files changed.
-7. Commit and push changes with a clear message referencing the retro.
+7. Review the diff and make sure only approved skill/principle files changed.
+8. Commit and push changes with a clear message referencing the retro.
 
 ```bash
 git add ETHOS.md */SKILL.md plugins/soria-stack/skills/*/SKILL.md
