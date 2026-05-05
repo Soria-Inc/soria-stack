@@ -63,6 +63,12 @@ skills. This is how SoriaStack gets better over time.
 the AI violated it and wasted time. New principles should come from the same
 source — real sessions, real failures, real corrections.
 
+**Source-of-truth rule:** Lessons that change skill behavior belong in the
+canonical `Soria-Inc/soria-stack` repo. Do not leave them stranded in a
+branch-local `soria-2` checkout, a generated plugin copy, or a backup under
+`~/.claude/skills`. If the current session is not already in the `soria-stack`
+repo, locate it before applying approved skill changes.
+
 ---
 
 ## Phase 1: Gather Evidence
@@ -178,6 +184,13 @@ Would have prevented: [What specific error this addresses]
 - **Description refinements** — better resolver triggers
 - **CLI surface gaps** — commands skills need that don't exist in `soria` yet
 
+For each skill update proposal, identify:
+- The target skill (`browse`, `dive`, `ingest`, `verify`, etc.)
+- The evidence that triggered the update
+- Whether the change belongs in the Claude-facing skill, the Codex plugin
+  wrapper, or both
+- Whether any matching lesson is already present in canonical `soria-stack`
+
 ### Open Questions
 - Decisions that came up in sessions but weren't resolved
 - Patterns that might be principles but need more evidence
@@ -226,17 +239,30 @@ rejected or modified — that's the point.
 
 After the human approves specific proposals:
 
-1. Update ETHOS.md with new/refined principles
-2. Update relevant SKILL.md files with new gates or anti-patterns
-3. Commit changes with clear message referencing the retro
+1. Locate the canonical `Soria-Inc/soria-stack` checkout. Common local path:
+   `/Users/adamron/.superset/projects/soria-stack`. Verify with
+   `git remote -v`.
+2. Update ETHOS.md with new/refined principles when the lesson is broad.
+3. Update relevant SKILL.md files with new gates or anti-patterns.
+4. When a skill has both surfaces, update both:
+   - Claude-facing: `<skill>/SKILL.md`
+   - Codex-facing: `plugins/soria-stack/skills/<skill>/SKILL.md`
+5. Preserve canonical metadata that points at `https://github.com/Soria-Inc/soria-stack`.
+   Do not copy repo-local `soria-2` metadata into the canonical skill repo.
+6. Review the diff and make sure only approved skill/principle files changed.
+7. Commit and push changes with a clear message referencing the retro.
 
 ```bash
-git add ETHOS.md */SKILL.md
+git add ETHOS.md */SKILL.md plugins/soria-stack/skills/*/SKILL.md
 git commit -m "retro: [date range] — [summary of changes]
 
 Evidence from [N] sessions:
 - [brief list of what drove each change]"
 ```
+
+If the lesson was first patched in a branch-local copy, compare that copy
+against canonical `soria-stack` and port only the actual lesson. Do not
+wholesale overwrite canonical files with embedded copies from another repo.
 
 ---
 

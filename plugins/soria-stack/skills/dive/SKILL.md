@@ -41,6 +41,15 @@ before acting.
   table.
 - Tables should usually put time on the column axis and the primary dimension
   on rows.
+- Prefer shared dive primitives over custom one-off wiring. For standard
+  time-across-columns tables, use `DiveGrid` pivot mode unless there is a
+  clear reason not to. Custom tables must preserve the same baseline behavior:
+  pinned row labels, latest-period visibility, horizontal scroll, row click,
+  formatting, empty-row suppression, and total/other styling.
+- Time-axis tables must be visually usable on first render. When periods run
+  left-to-right, the latest/rightmost period should be visible by default, and
+  the table must expose an obvious horizontal scrollbar when older periods are
+  off-screen.
 - Use URL state for every meaningful control and selected row.
 - When a table row represents an entity, clicking it should update the
   selected entity and redraw the chart.
@@ -56,8 +65,17 @@ before acting.
   low-value rows, or rows that do not add analytical value.
 - Hide controls with only one meaningful option. Do not add redundant toggles
   or dropdowns when row click already controls selection.
+- Keep core analytical choices visible when practical. Use segmented/pill
+  controls for primary views, metrics, and modes; reserve searchable dropdowns
+  for large entity or filter lists.
+- Avoid adding analytical modes that require explanation unless the user
+  explicitly asked for them or the UI names them clearly.
 - Use tree or pivot rows for subdimensions such as product mix, payer mix,
   rating bucket mix, or revenue category mix while preserving time as columns.
+- For tree/grouped pivot rows, verify the rendered hierarchy directly:
+  parent labels, child labels, expand/collapse behavior, row-click target, and
+  total/other handling. Parent/child identity should be deliberate, not an
+  accidental side effect of the row key used for selection.
 - KPIs should be view-specific and should explain the selected row or the
   market context, not reuse generic headline numbers.
 - Charts should focus on the selected row, use the simplest legible visual
@@ -68,6 +86,62 @@ before acting.
   complex cohort/math logic into React.
 - Verification rows should cover key totals, formula denominators, and known
   anchor values before the dive is considered ready.
+
+## Layering And Grain Discipline
+
+Use the dbt layer boundaries deliberately:
+
+- **Source / Bronze**: raw published files only. No dashboard reads this
+  directly.
+- **Staging**: one model per raw concept. Clean, type, dedupe, normalize
+  headers, unpivot, and drop messy source artifacts. No business joins beyond
+  source cleanup.
+- **Intermediate**: business logic and joins. This is where calculated fields,
+  mappings, thresholds, exposures, parent joins, and methodology logic belong.
+- **Marts**: customer-ready tables at explicit dashboard grains.
+- **Dive**: presentation and interaction only. Minimal heavy logic.
+
+Prefer fewer marts when the grain is the same. Do not create one mart per chart
+if several views can be powered by the same customer-ready grain.
+
+Never combine across incompatible grains. If joining detail rows would multiply
+the primary entity rows, keep that detail in a separate intermediate or mart.
+
+Rule of thumb:
+
+- Combine aggressively within the same grain.
+- Split when the grain changes.
+- Keep numerator and denominator fields available when ratios or rollups
+  matter.
+- Keep dashboard code out of staging/intermediate joins and raw source patching.
+
+Example:
+
+A Star Ratings dive can use one primary mart:
+
+- `star_ratings_contract_year`
+- Grain: `contract_number + rating_year`
+- Includes parent, enrollment, Overall, Part C, Part D, calculated score,
+  exposure, and methodology fields
+
+That mart can power parent history, Top N, Other, industry benchmark,
+selected-company charts, and star mix by grouping contract-year rows.
+
+Measure-level cutpoint logic is a different grain:
+
+- `contract_number + rating_year + measure_code`
+
+So it should stay separate:
+
+- `int_star_ratings__measure_detail`
+- `star_ratings_measure_heatmap`
+
+Do not join measure rows into the contract-year mart, because that multiplies
+contract rows and breaks enrollment-weighted metrics.
+
+The goal is not "one table" or "many tables." The goal is one clean
+customer-ready mart per analytical grain, with the dive doing only controls,
+selection, chart formatting, and light grouping.
 
 ## Notes
 
@@ -91,6 +165,11 @@ before acting.
   click the `EnvironmentBadge` (amber/green pill) to **staging** to see
   your changes; toggle back to **prod** for the customer view. Default is
   prod. The badge sends `X-SQLMESH-ENV` (legacy name; not SQLMesh-related).
+- Browser QA is required after meaningful UI changes. At minimum check each
+  view/control family for latest-period columns visible, horizontal scrollbar
+  present when needed, row click updating chart/state, no blank or repeated
+  rows, no redundant controls, and console/network free of hidden data
+  failures.
 - Use `preview` for in-chat output or `dashboard-review` for live UI proof
   after implementation.
 - Use mempalace when available for domain definitions or prior design context.

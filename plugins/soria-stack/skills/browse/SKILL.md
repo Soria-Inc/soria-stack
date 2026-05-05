@@ -58,16 +58,49 @@ Use the same `BROWSE_STATE_FILE` and `BROWSE_PARENT_PID=0` exports for every
 command. If those exports change between invocations, `$B` may start a fresh
 browser server and appear to "forget" tabs, cookies, or refs.
 
-For Soria pages, import cookies first. This is faster and avoids Clerk getting
-stuck on a slow or pending sign-in request. The default Soria dev URL is
-`https://dev.soriaanalytics.com`:
+For authenticated Soria pages, use the canonical host only:
+`https://dev.soriaanalytics.com`. Do not sign in through an explicit Vite port
+such as `https://dev.soriaanalytics.com:5174`; Clerk production keys reject
+that origin even when the same app is serving locally.
+
+Golden path for Soria auth:
 
 ```bash
+_ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
+: "${BROWSE_STATE_FILE:=${_ROOT}/.gstack/soria-dev-browser.json}"
+export BROWSE_STATE_FILE
+export BROWSE_PARENT_PID=0
+
 $B goto https://dev.soriaanalytics.com/
-$B cookie-import-browser arc --domain dev.soriaanalytics.com
+$B wait body
+$B cookie-import-browser arc --domain dev.soriaanalytics.com || true
+$B cookie-import-browser chrome --domain dev.soriaanalytics.com || true
+$B goto https://dev.soriaanalytics.com/dives
+$B wait --networkidle || true
+$B snapshot -i
 ```
 
-For prod canary or other hosts, swap the domain:
+If the snapshot shows the Soria sidebar and an `AR Adam Ron` account button,
+auth is ready. Continue in the same shell/session to the target URL. If it
+shows the Clerk sign-in form, sign in once and then navigate to the target URL
+without changing `BROWSE_STATE_FILE`:
+
+```bash
+$B fill 'input[name="identifier"], input[type="email"], input[placeholder="Email"], #email' 'adam@soriaanalytics.com'
+$B fill 'input[name="password"], input[type="password"], input[placeholder="Password"], #password' 'password'
+$B js "(() => { const b=[...document.querySelectorAll('button')].find(x => /sign in/i.test(x.textContent || '')); if (!b) return 'no sign-in button'; b.disabled=false; b.click(); return 'clicked sign-in'; })()"
+$B wait --networkidle || true
+$B goto 'https://dev.soriaanalytics.com/dives?dive=cost-reports-dashboard'
+$B wait --networkidle || true
+$B snapshot -i
+```
+
+Avoid splitting auth, reload, and target navigation across multiple state files
+or shell snippets. If a later snapshot unexpectedly returns to Clerk sign-in,
+first print `echo "$BROWSE_STATE_FILE"` and `$B cookies | grep __session`
+before retrying login.
+
+For prod/canary or other hosts, swap the domain:
 
 ```bash
 $B cookie-import-browser arc --domain soriaanalytics.com
@@ -93,7 +126,8 @@ $B cookie-import-browser chrome --domain dev.soriaanalytics.com
 
 If browser cookies still do not work, use the shared test account fallback.
 This is an intentionally low-value Soria test account kept here so agents can
-recover without interrupting the user:
+recover without interrupting the user. Keep the login and target navigation in
+the same browser state:
 
 ```bash
 $B chain <<'JSON'
@@ -103,6 +137,8 @@ $B chain <<'JSON'
   {"cmd":"fill","args":["#email","adam@soriaanalytics.com"]},
   {"cmd":"fill","args":["#password","password"]},
   {"cmd":"click","args":["button[type=submit]"]},
+  {"cmd":"wait","args":["--networkidle"]},
+  {"cmd":"goto","args":["https://dev.soriaanalytics.com/dives"]},
   {"cmd":"wait","args":["--networkidle"]},
   {"cmd":"snapshot","args":["-i"]}
 ]
