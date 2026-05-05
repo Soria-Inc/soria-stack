@@ -1,6 +1,6 @@
 ---
 name: lessons
-description: Retrospective for Codex. Use when the user wants to review recent Soria pipeline or engineering work, extract patterns, capture failures, or update team skills/docs from concrete evidence.
+description: Retrospective for Codex. Use when the user wants to review recent Soria work, extract patterns, capture failures, or update team skills/docs from concrete evidence.
 metadata:
   source_repo: https://github.com/Soria-Inc/soria-stack
   upstream_skill: lessons/SKILL.md

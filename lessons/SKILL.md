@@ -2,9 +2,14 @@
 name: lessons
 version: 4.0.0
 description: |
-  Retrospective for SoriaStack work. Use when asked to run lessons, review recent
-  pipeline or engineering work, capture what went wrong, or promote repeated
-  testing/review/codebase learnings into durable skills and docs.
+  Data pipeline retrospective — reviews recent pipeline work, identifies patterns
+  in what went well and what failed, proposes principle updates to ETHOS.md.
+  Reads skill artifacts, searches prior sessions via mempalace, and categorizes
+  lessons learned. The continuous improvement loop for SoriaStack.
+  Use when asked to "run lessons", "what did we learn", "review recent work",
+  "what went wrong", or periodically after a batch of pipeline work. Also use
+  when a testing, review, or dev-env lesson affected how Soria work shipped.
+  Proactively suggest after completing 3+ Soria sessions without a lessons review. (soria-stack)
 allowed-tools:
   - Read
   - Bash
@@ -52,9 +57,10 @@ pivots to active work mid-retro, invoke the right skill:
 
 # /lessons — "What did we learn?"
 
-You are running a SoriaStack retrospective. Your job is to review recent work,
-find patterns, and propose improvements to the team's principles, skills, and
-codebase docs. This is how SoriaStack gets better over time.
+You are running a data pipeline retrospective. Your job is to review recent
+work, find patterns in what went well and what failed, and propose improvements
+to the team's principles and skills. This is how SoriaStack gets better over
+time.
 
 **The core insight:** Every principle in ETHOS.md maps to a session where
 the AI violated it and wasted time. New principles should come from the same
@@ -66,8 +72,8 @@ branch-local `soria-2` checkout, a generated plugin copy, or a backup under
 `~/.claude/skills`. If the current session is not already in the `soria-stack`
 repo, locate it before applying approved skill changes.
 
-**Engineering routing rule:** Repeated workflow behavior belongs in
-`soria-stack`; current codebase facts belong in the app repo.
+**Routing rule:** Repeated workflow behavior belongs in `soria-stack`; current
+codebase facts belong in the app repo.
 
 - repeated test decision -> `soria-stack/test`
 - repeated review rule -> `soria-stack/code-review`
