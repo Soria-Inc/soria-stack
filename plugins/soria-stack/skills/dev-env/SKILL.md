@@ -17,6 +17,8 @@ Read `../../references/codex-adapter.md`, then read the target repo's
 Use the canonical top-level skill logic:
 
 - start or repair the Soria branch dev stack
+- ensure `frontend/.env.local` is present in branch worktrees by copying it
+  from `~/workspace/soria-2/frontend/.env.local` when missing
 - report frontend/backend URLs and logs
 - distinguish branch dev envs from data/dive `/env`
 - explain that Postgres and MotherDuck are cloned but Turbopuffer is not

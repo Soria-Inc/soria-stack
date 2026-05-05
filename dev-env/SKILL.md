@@ -37,12 +37,21 @@ From the worktree root:
 ```bash
 git status --short --branch
 soria env status 2>/dev/null || true
+if [ ! -f frontend/.env.local ] && [ -f "$HOME/workspace/soria-2/frontend/.env.local" ]; then
+  mkdir -p frontend
+  cp "$HOME/workspace/soria-2/frontend/.env.local" frontend/.env.local
+fi
 make run-dev
 ```
 
 `make run-dev` is idempotent. It starts or restarts frontend and backend,
 writes PIDs to `.dev/*.pid`, writes logs to `.dev/*.log`, auto-picks ports,
 and rewrites `SERVER_URL`.
+
+Clerk frontend auth lives in `frontend/.env.local` and is not tracked by git.
+New worktrees often miss it. Copy it from the stable checkout
+`~/workspace/soria-2/frontend/.env.local` into the current worktree when it is
+missing. Copy only; do not move or delete the source file.
 
 Report:
 
@@ -66,6 +75,9 @@ This creates the git worktree, Neon branch, MotherDuck clone, `.env`, and
 starts the stack. If shell setup did not cd into the new worktree, use the path
 printed by the command.
 
+After entering the new worktree, ensure `frontend/.env.local` exists as above
+before relying on frontend auth or browser tests.
+
 Older `make setup-dev` flows may still exist in some branches. If the repo docs
 say to use them, follow the repo docs and preserve per-worktree names:
 
@@ -85,6 +97,10 @@ runtime test cannot connect:
 pwd
 git rev-parse --show-toplevel
 soria env status 2>/dev/null || true
+if [ ! -f frontend/.env.local ] && [ -f "$HOME/workspace/soria-2/frontend/.env.local" ]; then
+  mkdir -p frontend
+  cp "$HOME/workspace/soria-2/frontend/.env.local" frontend/.env.local
+fi
 make stop-dev
 make run-dev
 make logs
