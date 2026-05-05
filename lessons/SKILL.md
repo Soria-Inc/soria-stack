@@ -52,6 +52,7 @@ pivots to active work mid-retro, invoke the right skill:
   skill (`/ingest`, `/map`, `/dive`, `/verify`) based on what needs fixing
 - User wants to plan work based on retro findings → invoke `/plan`
 - User wants to fix a testing/review gap → invoke `/test` or `/code-review`
+- User wants to fix a branch-local environment/setup gap → invoke `/dev-env`
 
 ---
 
