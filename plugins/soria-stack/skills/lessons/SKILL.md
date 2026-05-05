@@ -1,6 +1,6 @@
 ---
 name: lessons
-description: Data-pipeline retrospective for Codex. Use when the user wants to review recent work, extract patterns, capture what went well or failed, or update the team's operating principles from concrete evidence.
+description: Retrospective for Codex. Use when the user wants to review recent Soria pipeline or engineering work, extract patterns, capture failures, or update team skills/docs from concrete evidence.
 metadata:
   source_repo: https://github.com/Soria-Inc/soria-stack
   upstream_skill: lessons/SKILL.md
@@ -22,6 +22,10 @@ before acting.
 - treat "capture this", "why did this take so long", and "make sure we
   remember this" as possible skill-update requests
 - decide whether the lesson belongs in an existing skill or needs a new skill
+- route engineering lessons deliberately: test decisions to `test`, review
+  rules to `code-review`, dev environment procedure to `dev-env`, TP runtime
+  helpers to `seed-dev-tp`, and current codebase facts to app repo
+  `docs/engineering/*`
 - locate the target skill/new skill and compare any branch-local patch against
   canonical `Soria-Inc/soria-stack`
 - propose a concrete target and reviewable diff before editing unless the user

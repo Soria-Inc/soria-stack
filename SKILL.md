@@ -9,7 +9,7 @@ description: |
   All skills drive the Soria platform through the `mcp__soria__*` MCP tool
   namespace. SQL and React dives are authored locally in `frontend/src/dives/`
   and shipped via `git push` + PR — there is no `soria` CLI.
-  Seventeen skills: /tools (verify MCP + local stack), /env (preflight; no
+  Soria skills: /tools (verify MCP + local stack), /env (preflight; no
   isolated envs), /status (what exists), /plan (ETVLR orchestrator),
   /ingest (scrape + extract + publish), /map (value mapping), /parent-map
   (centralized parent company resolution), /dive (build a dive end-to-end),
@@ -18,7 +18,9 @@ description: |
   /diagnose (failure triage), /ticket (file structured tickets mid-session),
   /promote (warehouse_diff + warehouse_promote + PR + CI), /newsroom (news
   pipeline ops), /lessons (retrospective), /browse (persistent headless
-  Chromium for verification).
+  Chromium for verification), plus engineering skills /dev-env, /test,
+  /code-review, and /seed-dev-tp for branch-local app work, test evidence,
+  Soria-specific code review, and Turbopuffer-backed runtime tests.
   Suggest the right skill by stage: starting a session → /tools;
   investigating what exists → /status; planning work → /plan; building a
   pipeline → /ingest; normalizing values → /map; resolving parent companies
@@ -51,12 +53,12 @@ through `.github/workflows/promote.yml` and `dbt-deploy.yml`.
 Read `ETHOS.md` before any data pipeline work. See `MCP_TOOL_MAP.md` for
 the tool surface.
 
-# SoriaStack — Data Pipeline Skills
+# SoriaStack — Data Pipeline And Engineering Skills
 
-Seventeen cognitive modes for data pipeline work. Each sets how to think,
-when to stop, and what to verify. All skills drive the platform through
-the `mcp__soria__*` MCP tool namespace — never a `soria` CLI (it's been
-retired).
+SoriaStack contains data pipeline skills and engineering skills. Data pipeline
+skills drive the platform through the `mcp__soria__*` MCP tool namespace.
+Engineering skills operate inside app repo worktrees and follow that repo's
+`AGENTS.md`, scripts, docs, and local dev environment rules.
 
 ## Skill routing
 
@@ -79,6 +81,10 @@ retired).
 | Working with the news pipeline | `/newsroom` |
 | Reviewing recent work for lessons | `/lessons` |
 | Needing a persistent browser (repro, recon) | `/browse` |
+| Entering or repairing a branch-local app dev environment | `/dev-env` |
+| Testing Soria engineering changes or choosing E2E proof | `/test` |
+| Reviewing a Soria code diff or PR | `/code-review` |
+| Seeding dev Turbopuffer for search/chunk runtime tests | `/seed-dev-tp` |
 
 ## The sequence
 

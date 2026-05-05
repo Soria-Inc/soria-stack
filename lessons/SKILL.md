@@ -2,13 +2,9 @@
 name: lessons
 version: 4.0.0
 description: |
-  Data pipeline retrospective — reviews recent pipeline work, identifies patterns
-  in what went well and what failed, proposes principle updates to ETHOS.md.
-  Reads skill artifacts, searches prior sessions via mempalace, and categorizes
-  lessons learned. The continuous improvement loop for SoriaStack.
-  Use when asked to "run lessons", "what did we learn", "review recent work",
-  "what went wrong", or periodically after a batch of pipeline work.
-  Proactively suggest after completing 3+ pipeline sessions without a lessons review. (soria-stack)
+  Retrospective for SoriaStack work. Use when asked to run lessons, review recent
+  pipeline or engineering work, capture what went wrong, or promote repeated
+  testing/review/codebase learnings into durable skills and docs.
 allowed-tools:
   - Read
   - Bash
@@ -44,20 +40,21 @@ Read `ETHOS.md`. This skill exists to keep ETHOS.md accurate and current.
 ## Skill routing (always active)
 
 /lessons is a periodic skill, not part of the main ETVLR chain. If the user
-pivots to active pipeline work mid-retro, invoke the right skill:
+pivots to active work mid-retro, invoke the right skill:
 
 - User wants to investigate a specific pipeline → invoke `/status`
 - User wants to fix something the retro identified → invoke the relevant
   skill (`/ingest`, `/map`, `/dive`, `/verify`) based on what needs fixing
 - User wants to plan work based on retro findings → invoke `/plan`
+- User wants to fix a testing/review gap → invoke `/test` or `/code-review`
 
 ---
 
 # /lessons — "What did we learn?"
 
-You are running a data pipeline retrospective. Your job is to review recent
-work, find patterns, and propose improvements to the team's principles and
-skills. This is how SoriaStack gets better over time.
+You are running a SoriaStack retrospective. Your job is to review recent work,
+find patterns, and propose improvements to the team's principles, skills, and
+codebase docs. This is how SoriaStack gets better over time.
 
 **The core insight:** Every principle in ETHOS.md maps to a session where
 the AI violated it and wasted time. New principles should come from the same
@@ -68,6 +65,16 @@ canonical `Soria-Inc/soria-stack` repo. Do not leave them stranded in a
 branch-local `soria-2` checkout, a generated plugin copy, or a backup under
 `~/.claude/skills`. If the current session is not already in the `soria-stack`
 repo, locate it before applying approved skill changes.
+
+**Engineering routing rule:** Repeated workflow behavior belongs in
+`soria-stack`; current codebase facts belong in the app repo.
+
+- repeated test decision -> `soria-stack/test`
+- repeated review rule -> `soria-stack/code-review`
+- branch dev environment procedure -> `soria-stack/dev-env`
+- TP/search runtime helper procedure -> `soria-stack/seed-dev-tp`
+- codebase invariant or architecture explanation -> app repo `docs/engineering/*`
+- executable helper -> app repo `scripts/` plus the relevant docs
 
 ---
 

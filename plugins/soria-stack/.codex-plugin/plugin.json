@@ -16,14 +16,17 @@
     "browser",
     "dive",
     "data-pipeline",
-    "mcp"
+    "mcp",
+    "testing",
+    "code-review",
+    "dev-env"
   ],
   "skills": "./skills/",
   "mcpServers": "./.mcp.json",
   "interface": {
     "displayName": "Soria Stack",
-    "shortDescription": "Soria MCP workflow guidance and fast $B browser QA for Codex",
-    "longDescription": "Brings the Soria pipeline and dive workflows from Soria-Inc/soria-stack into Codex. Routes every pipeline verb through the Soria MCP (mcp__soria__*), authors dbt SQL and React dives locally in git, and uses the fast $B browse flow for UI verification. The Soria CLI has been retired; Codex users must configure the Soria MCP HTTP endpoint in their client for the pipeline skills to work.",
+    "shortDescription": "Soria workflow guidance, engineering tests/review, and fast $B browser QA for Codex",
+    "longDescription": "Brings the Soria pipeline, dive, and engineering workflows from Soria-Inc/soria-stack into Codex. Routes pipeline verbs through the Soria MCP (mcp__soria__*), authors dbt SQL and React dives locally in git, and adds branch dev-env, test, code-review, and seed-dev-tp skills for Soria app engineering work.",
     "developerName": "Soria Analytics",
     "category": "Coding",
     "capabilities": [
@@ -35,6 +38,8 @@
     "defaultPrompt": [
       "Use Soria Stack to inventory what exists for this concept via the Soria MCP",
       "Use browse to verify this dive and capture evidence quickly",
+      "Use test to choose the right proof layer for this Soria code change",
+      "Use code-review to review this Soria diff against repo-specific patterns",
       "Help me promote this dive to prod via warehouse_promote + PR + CI"
     ],
     "brandColor": "#0f172a",
