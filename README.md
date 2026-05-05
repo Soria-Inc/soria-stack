@@ -79,7 +79,7 @@ SoriaStack can contain two kinds of skills:
 
 - **Pipeline/product skills** for Soria data work: inventory, planning,
   ingestion, value mapping, dives, verification, browser review, promotion, and
-  newsroom workflows.
+  release workflows.
 - **Developer skills** for Soria-specific engineering workflows: local setup,
   CI debugging, MCP debugging, frontend runtime checks, test protocol, release
   hygiene, or repo maintenance.
@@ -109,7 +109,6 @@ Invoke skills by name, for example `/status` or `/dive`.
 | `/diagnose` | Triage broken workflows before guessing: schema mismatches, missing data, silent failures, runtime issues. |
 | `/ticket` | Capture a structured issue in Linear or as a GitHub-ready issue draft. |
 | `/promote` | Safe production path: diff, verification, browser QA, PR, promotion manifest, CI. |
-| `/newsroom` | News pipeline operations: branches, prompts, sources, articles, events, and newsletter workflow. |
 | `/lessons` | Retrospective and skill-maintenance loop. Turns evidence into durable updates in this repo. |
 
 ## Installation for Codex

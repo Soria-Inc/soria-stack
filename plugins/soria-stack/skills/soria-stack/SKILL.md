@@ -110,7 +110,6 @@ slower Chrome-first browser tools.
 - Ticketing: `/ticket`
 - Browser QA: `/browse` or `/dashboard-review`
 - Promotion: `/promote`
-- News pipeline: `/newsroom`
 - Retrospective: `/lessons`
 
 If a live page, screenshot, auth import, or UI repro is involved, switch to
