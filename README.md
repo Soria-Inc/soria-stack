@@ -15,9 +15,11 @@ The pack supports both Claude-style skills and Codex plugin skills:
 
 ## Operating Philosophy
 
-1. **MCP first.** Soria platform work runs through the `soria` MCP server
-   (`mcp__soria__*`). There is no `soria` CLI fallback for modern SoriaStack
-   work.
+1. **MCP first for platform data work.** Soria pipeline/product work runs
+   through the `soria` MCP server (`mcp__soria__*`). There is no `soria` CLI
+   fallback for pipeline operations. Engineering environment work is different:
+   app repo workflows may use `soria env ...` and Makefile targets to create
+   branch-local dev environments.
 2. **Shared state, reversible writes.** MCP writes hit shared Postgres and
    `soria_duckdb_staging`. Prefer reversible operations with audit trails over
    fake local isolation. Postgres rows use soft deletes and `PipelineEvent`
@@ -110,6 +112,18 @@ Invoke skills by name, for example `/status` or `/dive`.
 | `/ticket` | Capture a structured issue in Linear or as a GitHub-ready issue draft. |
 | `/promote` | Safe production path: diff, verification, browser QA, PR, promotion manifest, CI. |
 | `/lessons` | Retrospective and skill-maintenance loop. Turns evidence into durable updates in this repo. |
+
+Developer-focused skills:
+
+| Skill | What it does |
+|-------|-------------|
+| `/dev-env` | Start, inspect, or repair a branch-local Soria app environment for engineering work. |
+| `/test` | Choose and run the right proof layer: unit, integration, boundary, runtime, pipeline E2E, or deployed proof. |
+| `/code-review` | Review Soria diffs against repo-specific engineering patterns and test-boundary expectations. |
+
+Repo-local helper scripts, such as `soria-2/scripts/seed-dev-tp.py`, are not
+standalone skills. `/dev-env` and `/test` should route to those scripts when a
+specific proof needs them.
 
 ## Installation for Codex
 

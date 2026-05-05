@@ -1,6 +1,6 @@
 ---
 name: soria-stack
-description: Use when the task follows the Soria MCP workflow from the `Soria-Inc/soria-stack` repo — environment preflight, status/inventory, planning, ingest/publish work, dive implementation, verification, diagnosis, or promotion. Drive the Soria platform through `mcp__soria__*` tools and this repo's `AGENTS.md`. Pair with the `browse` skill for fast browser QA and UI debugging.
+description: Use when the task follows the Soria workflow from the `Soria-Inc/soria-stack` repo: MCP pipeline work, dive work, branch dev env setup, testing, code review, E2E proof, diagnosis, or promotion.
 metadata:
   source_repo: https://github.com/Soria-Inc/soria-stack
   variant: codex
@@ -8,14 +8,16 @@ metadata:
 
 # Soria Stack
 
-Codex adaptation of the `Soria-Inc/soria-stack` workflow. This skill is the
-MCP-first operating model for Soria work in Codex. There is no `soria` CLI.
+Codex adaptation of the `Soria-Inc/soria-stack` workflow. Pipeline/product work
+is MCP-first in Codex. Branch-local engineering dev environments follow the app
+repo's documented `soria env` and Makefile flow when present.
 
 ## When to use this skill
 
 - User wants to inventory what data / pipeline state exists for a concept
 - User wants a plan before changing ingestion, mappings, or dives
 - User is building or fixing a dive, verify flow, or promotion flow
+- User is setting up a Soria app dev environment, testing a change, or reviewing a Soria code diff
 - User wants the Soria-stack workflow specifically, but inside Codex
 
 ## When not to use it
@@ -110,6 +112,9 @@ slower Chrome-first browser tools.
 - Ticketing: `/ticket`
 - Browser QA: `/browse` or `/dashboard-review`
 - Promotion: `/promote`
+- Engineering dev env: `/dev-env`
+- Engineering tests and E2E proof: `/test`
+- Soria code review: `/code-review`
 - Retrospective: `/lessons`
 
 If a live page, screenshot, auth import, or UI repro is involved, switch to
