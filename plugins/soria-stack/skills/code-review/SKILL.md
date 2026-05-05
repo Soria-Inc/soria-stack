@@ -12,7 +12,7 @@ metadata:
 Codex adaptation of `Soria-Inc/soria-stack` `/code-review`.
 
 Read `../../references/codex-adapter.md`, then read the target repo's
-`AGENTS.md`, `CLAUDE.md`, and relevant `docs/engineering/*` pages.
+`AGENTS.md` and `CLAUDE.md` when present.
 
 Review Soria diffs against repo-specific implementation patterns:
 
@@ -27,4 +27,3 @@ Review Soria diffs against repo-specific implementation patterns:
 
 Findings first. Then residual risks. Then verdict: ready, ready after fixes,
 or not ready.
-

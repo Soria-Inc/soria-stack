@@ -13,9 +13,8 @@ Review the diff against Soria's real implementation patterns, not generic
 correctness. The goal is to catch changes that look reasonable in isolation
 but violate how this repo actually works.
 
-Read the target repo's `AGENTS.md`, `CLAUDE.md`, and relevant
-`docs/engineering/*` pages when present. If docs are absent, infer from nearby
-code and tests.
+Read the target repo's `AGENTS.md` and `CLAUDE.md` when present. Infer the
+repo's real patterns from nearby code and tests.
 
 ## Workflow
 
@@ -92,8 +91,7 @@ If the review catches a repeated miss, record where it should go:
 
 - repeated review rule -> `soria-stack/code-review`
 - repeated testing decision -> `soria-stack/test`
-- codebase invariant -> target repo `docs/engineering/*`
-- missing helper -> target repo `scripts/` plus docs
+- missing helper -> target repo `scripts/`
 
 ## Output
 
@@ -109,4 +107,3 @@ Residual risks
 Verdict
 - Ready / ready after fixes / not ready.
 ```
-

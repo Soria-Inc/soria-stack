@@ -12,7 +12,7 @@ metadata:
 Codex adaptation of `Soria-Inc/soria-stack` `/test`.
 
 Read `../../references/codex-adapter.md`, then read the target repo's
-`AGENTS.md`, `CLAUDE.md`, and any `docs/engineering/testing.md`.
+`AGENTS.md` and `CLAUDE.md` when present.
 
 Testing means choosing evidence, not blindly running pytest. Classify the
 change and pick the needed proof layer:

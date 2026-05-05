@@ -34,8 +34,7 @@ This file exists for agents (Claude Code, Clawd, etc.) that look for an
    such as `soria-2/scripts/seed-dev-tp.py`, are implementation details that
    those skills may route to when needed.
 7. **Lessons close the loop.** Repeated test/review/dev-env discoveries
-   belong back in this repo's skills; current codebase invariants belong in
-   the app repo's `docs/engineering/*`.
+   belong back in this repo's skills.
 
 ## Skill index
 

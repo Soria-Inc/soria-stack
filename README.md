@@ -18,7 +18,7 @@ The pack supports both Claude-style skills and Codex plugin skills:
 1. **MCP first for platform data work.** Soria pipeline/product work runs
    through the `soria` MCP server (`mcp__soria__*`). There is no `soria` CLI
    fallback for pipeline operations. Engineering environment work is different:
-   app repo docs may use `soria env ...` and Makefile targets to create
+   app repo workflows may use `soria env ...` and Makefile targets to create
    branch-local dev environments.
 2. **Shared state, reversible writes.** MCP writes hit shared Postgres and
    `soria_duckdb_staging`. Prefer reversible operations with audit trails over

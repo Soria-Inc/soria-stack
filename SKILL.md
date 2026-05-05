@@ -58,7 +58,7 @@ the tool surface.
 SoriaStack contains data pipeline skills and engineering skills. Data pipeline
 skills drive the platform through the `mcp__soria__*` MCP tool namespace.
 Engineering skills operate inside app repo worktrees and follow that repo's
-`AGENTS.md`, scripts, docs, and local dev environment rules.
+`AGENTS.md`, scripts, and local dev environment rules.
 
 ## Skill routing
 

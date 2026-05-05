@@ -12,8 +12,8 @@ allowed-tools:
 Testing means choosing credible evidence for the change. It does not mean
 blindly running pytest.
 
-Read the target repo's `AGENTS.md`, `CLAUDE.md`, and any
-`docs/engineering/testing.md` first. Repo-local scripts and rules win.
+Read the target repo's `AGENTS.md` and `CLAUDE.md` when present. Repo-local
+scripts and rules win.
 
 ## Proof Layers
 

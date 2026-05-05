@@ -73,15 +73,13 @@ branch-local `soria-2` checkout, a generated plugin copy, or a backup under
 `~/.claude/skills`. If the current session is not already in the `soria-stack`
 repo, locate it before applying approved skill changes.
 
-**Routing rule:** Repeated workflow behavior belongs in `soria-stack`; current
-codebase facts belong in the app repo.
+**Routing rule:** Repeated workflow behavior belongs in `soria-stack`.
 
 - repeated test decision -> `soria-stack/test`
 - repeated review rule -> `soria-stack/code-review`
 - branch dev environment procedure -> `soria-stack/dev-env`
 - TP/search runtime helper usage -> `soria-stack/test` or `soria-stack/dev-env`
-- codebase invariant or architecture explanation -> app repo `docs/engineering/*`
-- executable helper -> app repo `scripts/` plus the relevant docs
+- executable helper -> app repo `scripts/`
 
 ---
 
