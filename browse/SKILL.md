@@ -77,6 +77,11 @@ can also call `$B` directly for one-off exploration.
 URLs, screenshots, console/network inspection, and Soria pages. These rules
 only apply when a Soria app page needs Clerk auth.
 
+For Soria dive work on `https://dev.soriaanalytics.com`, use `/dev-dives`
+first when the page is down, a grid shows no rows, or the frontend may be
+pointed at the wrong backend or MotherDuck catalog. `/browse` owns browser
+auth and evidence; `/dev-dives` owns Vite/env/catalog alignment.
+
 Use the same `BROWSE_STATE_FILE` and `BROWSE_PARENT_PID=0` exports for auth,
 reloads, and target navigation. If those exports change, `$B` may start a
 fresh browser and appear to forget tabs, cookies, or refs.
@@ -105,7 +110,9 @@ curl -skI --max-time 3 https://dev.soriaanalytics.com:5189/ >/dev/null && echo V
 - `BARE_DOWN` + `VITE_OK`: Vite is up but the pf redirect is down. Report that
   `make dev-https-setup` or `scripts/setup-local-https.sh` needs to be rerun
   with sudo; do not keep retrying browser auth.
-- `VITE_DOWN`: start Vite from the app repo, then retry the two checks:
+- `VITE_DOWN`: for Soria dive work, switch to `/dev-dives` so Vite starts with
+  the correct remote API proxy and MotherDuck catalogs. For non-dive local
+  pages, start Vite from the app repo, then retry the two checks:
 
 ```bash
 mkdir -p .dev

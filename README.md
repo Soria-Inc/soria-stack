@@ -118,6 +118,7 @@ Developer-focused skills:
 | Skill | What it does |
 |-------|-------------|
 | `/dev-env` | Start, inspect, or repair a branch-local Soria app environment for engineering work. |
+| `/dev-dives` | Start or repair the canonical dev HTTPS dive frontend when browser QA or empty grids may be caused by wrong Vite/backend/catalog alignment. |
 | `/test` | Choose and run the right proof layer: unit, integration, boundary, runtime, pipeline E2E, or deployed proof. |
 | `/code-review` | Review Soria diffs against repo-specific engineering patterns and test-boundary expectations. |
 

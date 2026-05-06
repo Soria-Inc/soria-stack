@@ -14,6 +14,7 @@
     "soria-stack",
     "codex",
     "browser",
+    "dev-dives",
     "dive",
     "data-pipeline",
     "mcp",
@@ -38,6 +39,7 @@
     "defaultPrompt": [
       "Use Soria Stack to inventory what exists for this concept via the Soria MCP",
       "Use browse to verify this dive and capture evidence quickly",
+      "Use dev-dives to repair dev.soriaanalytics.com frontend runtime for dive QA",
       "Use test to choose the right proof layer for this Soria code change",
       "Use code-review to review this Soria diff against repo-specific patterns",
       "Help me promote this dive to prod via warehouse_promote + PR + CI"

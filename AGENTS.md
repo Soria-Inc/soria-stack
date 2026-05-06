@@ -8,7 +8,7 @@ This file exists for agents (Claude Code, Clawd, etc.) that look for an
 1. **Start data/pipeline sessions with `/tools`.** No data skill should run
    until the `soria` MCP is confirmed reachable and the local dev stack is
    installed. For branch-local app engineering, route first to `/dev-env`,
-   `/test`, or `/code-review` based on the task.
+   `/dev-dives`, `/test`, or `/code-review` based on the task.
 2. **MCP-first for platform data work.** The Soria platform is driven through the
    `mcp__soria__*` tool namespace — `scraper_run`, `detection_run`,
    `extraction_run`, `validation_run`, `warehouse_query`, `warehouse_manage`,
@@ -29,10 +29,11 @@ This file exists for agents (Claude Code, Clawd, etc.) that look for an
 5. **Read `ETHOS.md`** before any data pipeline work. All numbered
    principles apply.
 6. **Engineering skills are first-class.** Use `/dev-env` for branch-local
-   app environments, `/test` for proof selection and E2E testing, and
-   `/code-review` for Soria-specific code review. Repo-local helper scripts,
-   such as `soria-2/scripts/seed-dev-tp.py`, are implementation details that
-   those skills may route to when needed.
+   app environments, `/dev-dives` for canonical dev HTTPS dive frontend
+   repair, `/test` for proof selection and E2E testing, and `/code-review`
+   for Soria-specific code review. Repo-local helper scripts, such as
+   `soria-2/scripts/seed-dev-tp.py`, are implementation details that those
+   skills may route to when needed.
 7. **Lessons close the loop.** Repeated test/review/dev-env discoveries
    belong back in this repo's skills.
 

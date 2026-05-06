@@ -18,9 +18,9 @@ description: |
   /diagnose (failure triage), /ticket (file structured tickets mid-session),
   /promote (warehouse_diff + warehouse_promote + PR + CI), /newsroom (news
   pipeline ops), /lessons (retrospective), /browse (persistent headless
-  Chromium for verification), plus engineering skills /dev-env, /test, and
-  /code-review for branch-local app work, test evidence, and Soria-specific
-  code review.
+  Chromium for verification), plus engineering skills /dev-env, /dev-dives,
+  /test, and /code-review for branch-local app work, dev HTTPS dive frontend
+  repair, test evidence, and Soria-specific code review.
   Suggest the right skill by stage: starting a session → /tools;
   investigating what exists → /status; planning work → /plan; building a
   pipeline → /ingest; normalizing values → /map; resolving parent companies
@@ -82,6 +82,7 @@ Engineering skills operate inside app repo worktrees and follow that repo's
 | Reviewing recent work for lessons | `/lessons` |
 | Needing a persistent browser (repro, recon) | `/browse` |
 | Entering or repairing a branch-local app dev environment | `/dev-env` |
+| Repairing `dev.soriaanalytics.com` dive frontend/runtime alignment | `/dev-dives` |
 | Testing Soria engineering changes or choosing E2E proof | `/test` |
 | Reviewing a Soria code diff or PR | `/code-review` |
 
@@ -155,4 +156,4 @@ shared-state position in their output.
 - **Artifacts** in `~/.soria-stack/artifacts/` — state passed between skills
 - **Gates** in every skill — hard stops where the human must review
 - **Completion status** — every skill ends with DONE / DONE_WITH_CONCERNS / BLOCKED / NEEDS_CONTEXT
-- **Local dev** — `make dev-https` runs vite at `https://dev.soriaanalytics.com` against the prod DBOS API + Clerk. No local backend is needed for dive work.
+- **Local dev** — use `/dev-dives` for frontend-only dive work at `https://dev.soriaanalytics.com` against the prod DBOS API + Clerk. No local backend is needed for dive frontend iteration.

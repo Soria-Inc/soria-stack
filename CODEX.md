@@ -39,6 +39,7 @@ Playwright MCP as a slower fallback.
 The Codex plugin also exposes Soria engineering workflows:
 
 - `/dev-env` — branch-local app env setup and repair
+- `/dev-dives` — dev HTTPS dive frontend setup/repair for `dev.soriaanalytics.com`
 - `/test` — choose unit, integration, boundary, runtime, pipeline E2E, or deployed proof
 - `/code-review` — Soria-specific diff review and test-boundary judgment
 
