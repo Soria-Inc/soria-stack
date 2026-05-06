@@ -22,6 +22,9 @@ B=""
 for candidate in \
   "$_ROOT/browse/vendor/dist/browse" \
   "$_ROOT/plugins/soria-stack/skills/browse/vendor/dist/browse" \
+  "/Users/adamron/.superset/projects/soria-stack/browse/vendor/dist/browse" \
+  "$HOME/.codex/skills/soria-stack/browse/vendor/dist/browse" \
+  "$HOME/.codex/skills/browse/vendor/dist/browse" \
   "$_ROOT/.claude/skills/soria-stack/browse/vendor/dist/browse" \
   "$HOME/.claude/skills/soria-stack/browse/vendor/dist/browse" \
   "$HOME/.claude/skills/browse/vendor/dist/browse"; do
@@ -32,14 +35,13 @@ if [ -z "$B" ]; then
   echo "NEEDS_SETUP"
   echo "Expected the fast browse binary from https://github.com/Soria-Inc/soria-stack"
   echo "Setup:"
-  echo "  if [ -d \"$_ROOT/browse\" ]; then cd \"$_ROOT/browse\" && ./build.sh; fi"
-  echo "  # or:"
-  echo "  git clone https://github.com/Soria-Inc/soria-stack.git ~/.claude/skills/soria-stack"
-  echo "  cd ~/.claude/skills/soria-stack/browse && ./build.sh"
+  echo "  cd /Users/adamron/.superset/projects/soria-stack/browse && ./build.sh"
+  echo "  # or, from a soria-stack checkout:"
+  echo "  cd browse && ./build.sh"
   exit 1
 fi
 
-echo "READY: $B"
+echo "READY: $(realpath "$B" 2>/dev/null || printf '%s' "$B")"
 : "${BROWSE_STATE_FILE:=${_ROOT}/.gstack/state.json}"
 export BROWSE_STATE_FILE
 export BROWSE_PARENT_PID=0
@@ -52,18 +54,29 @@ mkdir -p "$(dirname "$BROWSE_STATE_FILE")"
 - It keeps state warm between calls.
 - It is the closest match to the original `soria-stack` `/browse` skill.
 
-## Auth bootstrap
+## Soria Auth And URL Rules
 
-Use the same `BROWSE_STATE_FILE` and `BROWSE_PARENT_PID=0` exports for every
-command. If those exports change between invocations, `$B` may start a fresh
-browser server and appear to "forget" tabs, cookies, or refs.
+`/browse` is not only for dives. Use it for vendor sites, local apps,
+localhost URLs, screenshots, console/network inspection, and Soria pages. These
+rules only apply when a Soria app page needs Clerk auth.
 
-For authenticated Soria pages, use the canonical host only:
-`https://dev.soriaanalytics.com`. Do not sign in through an explicit Vite port
-such as `https://dev.soriaanalytics.com:5174`; Clerk production keys reject
-that origin even when the same app is serving locally.
+Use the same `BROWSE_STATE_FILE` and `BROWSE_PARENT_PID=0` exports for auth,
+reloads, and target navigation. If those exports change, `$B` may start a
+fresh browser and appear to forget tabs, cookies, or refs.
 
-Golden path for Soria auth:
+### Pick the right Soria URL
+
+- Authenticated Soria app pages use `https://dev.soriaanalytics.com/...`.
+  Dives live under `https://dev.soriaanalytics.com/dives`.
+- Direct local dev/Vite pages use `http://127.0.0.1:<port>/...` or
+  `http://localhost:<port>/...`.
+- Never combine them. Do not use
+  `https://dev.soriaanalytics.com:<vite-port>/...`.
+- If shell `curl` reaches `127.0.0.1:<port>` but `$B` times out on
+  `dev.soriaanalytics.com:<port>`, the URL is wrong. Switch to localhost or
+  the canonical host without a port.
+
+### Import Soria cookies first
 
 ```bash
 _ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
@@ -80,25 +93,21 @@ $B wait --networkidle || true
 $B snapshot -i
 ```
 
-If the snapshot shows the Soria sidebar and an `AR Adam Ron` account button,
-auth is ready. Continue in the same shell/session to the target URL. If it
-shows the Clerk sign-in form, sign in once and then navigate to the target URL
-without changing `BROWSE_STATE_FILE`:
+If `cookie-import-browser` says the current page domain is empty, navigate to
+`https://dev.soriaanalytics.com/` in the same state file and rerun the import.
+Cookie import validates the current tab's domain.
+
+The snapshot must show the Soria sidebar and an `AR Adam Ron` account button.
+Seeing only a `__session` cookie is not enough; Clerk can still evaluate the
+browser as signed out.
+
+For local authenticated Soria pages on localhost, import against the local
+host you actually opened:
 
 ```bash
-$B fill 'input[name="identifier"], input[type="email"], input[placeholder="Email"], #email' 'adam@soriaanalytics.com'
-$B fill 'input[name="password"], input[type="password"], input[placeholder="Password"], #password' 'password'
-$B js "(() => { const b=[...document.querySelectorAll('button')].find(x => /sign in/i.test(x.textContent || '')); if (!b) return 'no sign-in button'; b.disabled=false; b.click(); return 'clicked sign-in'; })()"
-$B wait --networkidle || true
-$B goto 'https://dev.soriaanalytics.com/dives?dive=cost-reports-dashboard'
-$B wait --networkidle || true
-$B snapshot -i
+$B goto http://localhost:5173/
+$B cookie-import-browser arc --domain localhost
 ```
-
-Avoid splitting auth, reload, and target navigation across multiple state files
-or shell snippets. If a later snapshot unexpectedly returns to Clerk sign-in,
-first print `echo "$BROWSE_STATE_FILE"` and `$B cookies | grep __session`
-before retrying login.
 
 For prod/canary or other hosts, swap the domain:
 
@@ -106,48 +115,33 @@ For prod/canary or other hosts, swap the domain:
 $B cookie-import-browser arc --domain soriaanalytics.com
 ```
 
-Verify auth actually stuck:
+On macOS, the first import may trigger a Keychain prompt for Arc or Chrome safe
+storage. Click "Always Allow" so future imports do not prompt.
+
+### Manual Soria login fallback
+
+If browser cookies still do not work, try the shared Soria credentials once in
+the same browser state. Try `adam@soriaanalytics.com` first; if the page still
+shows Clerk sign-in, rerun the same flow with `adam@soriaresearch.com`. The
+password for both is `password`.
 
 ```bash
-$B cookies | grep __session
+EMAIL=adam@soriaanalytics.com  # if needed, rerun with adam@soriaresearch.com
+$B goto https://dev.soriaanalytics.com/
+$B wait body
+$B fill 'input[name="identifier"], input[type="email"], input[placeholder="Email"], #email' "$EMAIL"
+$B fill 'input[name="password"], input[type="password"], input[placeholder="Password"], #password' 'password'
+$B js "(() => { const b=[...document.querySelectorAll('button')].find(x => /sign in|continue|submit/i.test(x.textContent || '')); if (!b) return 'no submit button'; b.disabled=false; b.click(); return 'clicked'; })()"
+$B wait --networkidle || true
 $B goto https://dev.soriaanalytics.com/dives
-$B wait --networkidle
+$B wait --networkidle || true
 $B snapshot -i
 ```
 
-If the snapshot shows the Soria sidebar and an `AR Adam Ron` account button,
-auth is good. If it shows the Clerk sign-in form, rerun the cookie import from
-Arc first, then Chrome:
-
-```bash
-$B cookie-import-browser arc --domain dev.soriaanalytics.com
-$B cookie-import-browser chrome --domain dev.soriaanalytics.com
-```
-
-If browser cookies still do not work, use the shared test account fallback.
-This is an intentionally low-value Soria test account kept here so agents can
-recover without interrupting the user. Keep the login and target navigation in
-the same browser state:
-
-```bash
-$B chain <<'JSON'
-[
-  {"cmd":"goto","args":["https://dev.soriaanalytics.com/"]},
-  {"cmd":"wait","args":["body"]},
-  {"cmd":"fill","args":["#email","adam@soriaanalytics.com"]},
-  {"cmd":"fill","args":["#password","password"]},
-  {"cmd":"click","args":["button[type=submit]"]},
-  {"cmd":"wait","args":["--networkidle"]},
-  {"cmd":"goto","args":["https://dev.soriaanalytics.com/dives"]},
-  {"cmd":"wait","args":["--networkidle"]},
-  {"cmd":"snapshot","args":["-i"]}
-]
-JSON
-```
-
 If that lands back on the sign-in form or the submit request stays pending,
-do not keep retrying credentials. Re-import cookies from a real browser session
-or use the Playwright fallback.
+do not keep retrying. Capture `$B url`, `$B cookies | grep __session`,
+`$B console --errors`, and the last 80 network lines, then report the auth
+blocker or use the Playwright fallback if the user requested a fallback.
 
 ## Soria Environment
 
