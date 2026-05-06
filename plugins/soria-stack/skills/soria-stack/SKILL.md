@@ -1,6 +1,9 @@
 ---
 name: soria-stack
-description: Use when the task follows the Soria workflow from the `Soria-Inc/soria-stack` repo: MCP pipeline work, dive work, branch dev env setup, testing, code review, E2E proof, diagnosis, or promotion.
+description: |
+  Use when the task follows the Soria workflow from the `Soria-Inc/soria-stack`
+  repo: MCP pipeline work, dive work, branch dev env setup, testing, code
+  review, E2E proof, diagnosis, or promotion.
 metadata:
   source_repo: https://github.com/Soria-Inc/soria-stack
   variant: codex
