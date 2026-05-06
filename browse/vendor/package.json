@@ -1,16 +1,18 @@
 {
   "name": "soria-browse",
-  "version": "0.1.0",
-  "description": "Vendored from gstack (MIT, https://github.com/garrytan/gstack). Persistent headless Chromium for AI agents.",
+  "version": "1.26.4.0-soria.0",
+  "description": "Vendored browser runtime from gstack (MIT, https://github.com/garrytan/gstack). Persistent Chromium for AI agents.",
   "license": "MIT",
   "type": "module",
   "bin": {
     "soria-browse": "./dist/browse"
   },
   "scripts": {
-    "build": "bun build --compile src/cli.ts --outfile dist/browse && bun build --compile src/find-browse.ts --outfile dist/find-browse && chmod +x dist/browse dist/find-browse"
+    "build": "mkdir -p dist && bun build --compile src/cli.ts --outfile dist/browse && bun build --compile src/find-browse.ts --outfile dist/find-browse && cp src/bun-polyfill.cjs dist/bun-polyfill.cjs && cp UPSTREAM_COMMIT dist/.version && chmod +x dist/browse dist/find-browse"
   },
   "dependencies": {
+    "@huggingface/transformers": "^4.1.0",
+    "@ngrok/ngrok": "^1.7.0",
     "diff": "^7.0.0",
     "playwright": "^1.58.2"
   },

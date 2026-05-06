@@ -83,15 +83,36 @@ fresh browser and appear to forget tabs, cookies, or refs.
 
 ### Pick the right Soria URL
 
-- Authenticated Soria app pages use `https://dev.soriaanalytics.com/...`.
+- Authenticated Soria app pages use bare `https://dev.soriaanalytics.com/...`.
   Dives live under `https://dev.soriaanalytics.com/dives`.
+- That host is local in dev: `/etc/hosts` maps it to `127.0.0.1`, and macOS
+  `pf` redirects port `443` to Vite on `5189`.
+- `https://dev.soriaanalytics.com:5189/...` is a liveness diagnostic only.
+  Do not use the explicit port for Clerk sign-in or final auth assertions.
 - Direct local dev/Vite pages use `http://127.0.0.1:<port>/...` or
-  `http://localhost:<port>/...`.
-- Never combine them. Do not use
-  `https://dev.soriaanalytics.com:<vite-port>/...`.
-- If shell `curl` reaches `127.0.0.1:<port>` but `$B` times out on
-  `dev.soriaanalytics.com:<port>`, the URL is wrong. Switch to localhost or
-  the canonical host without a port.
+  `http://localhost:<port>/...` when the app does not need Soria Clerk.
+
+### Soria local liveness preflight
+
+Before blaming auth, check whether the local dev host is alive:
+
+```bash
+curl -skI --max-time 3 https://dev.soriaanalytics.com/ >/dev/null && echo BARE_OK || echo BARE_DOWN
+curl -skI --max-time 3 https://dev.soriaanalytics.com:5189/ >/dev/null && echo VITE_OK || echo VITE_DOWN
+```
+
+- `BARE_OK`: use `https://dev.soriaanalytics.com/...`.
+- `BARE_DOWN` + `VITE_OK`: Vite is up but the pf redirect is down. Report that
+  `make dev-https-setup` or `scripts/setup-local-https.sh` needs to be rerun
+  with sudo; do not keep retrying browser auth.
+- `VITE_DOWN`: start Vite from the app repo, then retry the two checks:
+
+```bash
+mkdir -p .dev
+(cd frontend && nohup npx vite --host dev.soriaanalytics.com --port 5189 > ../.dev/browser-vite.log 2>&1 & echo $! > ../.dev/browser-vite.pid)
+sleep 1
+tail -n 20 .dev/browser-vite.log
+```
 
 ### Import Soria cookies first
 
