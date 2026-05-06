@@ -73,6 +73,15 @@ branch-local `soria-2` checkout, a generated plugin copy, or a backup under
 `~/.claude/skills`. If the current session is not already in the `soria-stack`
 repo, locate it before applying approved skill changes.
 
+**Skill edit location rule:** On Adam's machine, edit skills in
+`/Users/adamron/.superset/projects/soria-stack`, not directly under
+`~/.codex/skills`, `~/.claude/skills`, or app-repo embedded copies. Codex reads
+the plugin skill files through symlinks, so existing local `SKILL.md` edits are
+live on disk immediately; after GitHub `main` changes, run `git pull` in the
+canonical repo. Run `bash install-codex.sh` when adding/removing skills,
+changing plugin metadata, or rebuilding `/browse`; use a fresh Codex session if
+the update does not appear.
+
 **Routing rule:** Repeated workflow behavior belongs in `soria-stack`.
 
 - repeated test decision -> `soria-stack/test`

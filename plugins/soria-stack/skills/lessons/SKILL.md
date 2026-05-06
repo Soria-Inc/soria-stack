@@ -31,8 +31,15 @@ before acting.
   explicitly approved direct landing
 - update the canonical skill repo, not a temporary `soria-2` checkout or
   backup copy
+- on Adam's machine, edit skills in
+  `/Users/adamron/.superset/projects/soria-stack`, not directly under
+  `~/.codex/skills`, `~/.claude/skills`, or app-repo embedded copies
 - update both surfaces when needed:
   `<skill>/SKILL.md` and `plugins/soria-stack/skills/<skill>/SKILL.md`
+- remember Codex reads plugin skills through symlinks: existing `SKILL.md`
+  edits are live on disk, but after GitHub `main` changes run `git pull`; run
+  `bash install-codex.sh` for new/removed skills, plugin metadata, or `/browse`
+  rebuilds, and use a fresh Codex session if changes do not appear
 - preserve `https://github.com/Soria-Inc/soria-stack` metadata when porting
   lessons from embedded copies
 - surface MCP tool gaps (needed behavior with no `mcp__soria__*` tool)
