@@ -1,6 +1,6 @@
 ---
 name: dev-dives
-version: 1.0.0
+version: 1.1.0
 description: Use when setting up, repairing, or verifying the Soria dev HTTPS dive frontend at https://dev.soriaanalytics.com, especially when iterating on dives against the remote prod API, checking Vite/MotherDuck env alignment, or diagnosing empty dashboard grids.
 allowed-tools:
   - Read
@@ -15,7 +15,10 @@ to the remote prod backend. This is different from `/dev-env`, which starts a
 full local backend/frontend stack, and from `/browse`, which handles browser
 auth, screenshots, console, and network evidence after the runtime is sane.
 
-Read the target repo's `AGENTS.md` and `CLAUDE.md` first. Repo-local rules win.
+Read the target repo's `AGENTS.md` first (in shifted-left repos `CLAUDE.md`
+is a symlink to it). When working on dives, load `docs/representing/dives.md`
+and `docs/representing/dbt-marts.md` for the canonical dive + dbt conventions
+in that codebase. Repo-local rules always win.
 
 ## Runtime Contract
 

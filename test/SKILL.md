@@ -1,6 +1,6 @@
 ---
 name: test
-version: 1.0.0
+version: 1.1.0
 description: Use when testing Soria engineering changes, deciding which proof layer is credible, running E2E checks, or verifying MCP, DBOS, FastAPI, Turbopuffer, warehouse, scraper, extractor, or frontend behavior.
 allowed-tools:
   - Read
@@ -12,8 +12,12 @@ allowed-tools:
 Testing means choosing credible evidence for the change. It does not mean
 blindly running pytest.
 
-Read the target repo's `AGENTS.md` and `CLAUDE.md` when present. Repo-local
-scripts and rules win.
+Read the target repo's `AGENTS.md` first (in shifted-left repos `CLAUDE.md`
+is a symlink to it). Load `docs/cross-cutting/testing.md` (and
+`docs/cross-cutting/e2e-testing.md` if E2E is in scope) for the canonical
+test conventions; load the subsystem doc (e.g., `docs/transforming/extraction.md`)
+for its `Manual test recipes` section relevant to the change. Repo-local
+scripts and rules always win.
 
 ## Proof Layers
 

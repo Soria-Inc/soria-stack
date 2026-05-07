@@ -1,6 +1,6 @@
 ---
 name: code-review
-version: 1.0.0
+version: 1.1.0
 description: Use when reviewing Soria code, PRs, commits, or diffs for readiness, especially DBOS, MCP, API, database, scraper, extractor, observability, Turbopuffer, warehouse, frontend, or test-boundary changes.
 allowed-tools:
   - Read
@@ -13,8 +13,12 @@ Review the diff against Soria's real implementation patterns, not generic
 correctness. The goal is to catch changes that look reasonable in isolation
 but violate how this repo actually works.
 
-Read the target repo's `AGENTS.md` and `CLAUDE.md` when present. Infer the
-repo's real patterns from nearby code and tests.
+Read the target repo's `AGENTS.md` first (in shifted-left repos `CLAUDE.md`
+is a symlink to it). Then load `docs/README.md` to find the subsystem routing
+table — based on which subsystem(s) the diff touches, load the relevant
+`docs/<pillar>/<doc>.md`. Those hold the codebase's actual rules, examples,
+and anti-patterns; ground review against them, not vibes. Fall back to
+inferring from nearby code only when those docs don't cover what changed.
 
 ## Workflow
 

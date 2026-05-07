@@ -1,6 +1,6 @@
 ---
 name: dev-env
-version: 1.0.0
+version: 1.1.0
 description: Use when entering a Soria app worktree, starting or repairing the local backend/frontend stack, preparing runtime tests, or needing an isolated branch dev environment with Neon and MotherDuck.
 allowed-tools:
   - Read
@@ -13,7 +13,10 @@ Engineering dev environments are for running Soria code against an isolated
 branch backend/frontend. This is different from `/env`, which is the data/dive
 preflight for MCP-first shared staging work.
 
-Read the target repo's `AGENTS.md` and `CLAUDE.md` first. Repo-local rules win.
+Read the target repo's `AGENTS.md` first (in shifted-left repos `CLAUDE.md`
+is a symlink to it). When `docs/cross-cutting/dev-env.md` exists, it's the
+canonical dev-env reference for that codebase — read it before assuming
+Soria conventions apply. Repo-local rules always win.
 
 ## What It Provisions
 
