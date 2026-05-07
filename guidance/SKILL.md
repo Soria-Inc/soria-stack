@@ -168,6 +168,16 @@ If a chunk_search response exceeds context (>50KB), the result will be
 persisted to a file. Use `jq -r '.result' <file> | grep -E "^File:|^Chunk:"`
 to enumerate the chunks before deciding which to extract.
 
+### Phase 3: Per-event extraction — source preference order
+
+When the same guidance event has multiple chunked sources, prefer in this order:
+1. **8-K Exhibit 99.1** from `sec_edgar_prime` — the authoritative SEC-filed press release with exact tables. `as_of_date` = the 8-K filing date.
+2. **IR press release PDF** from `ir_<ticker>` — same content, but `date_iso` is fiscal-year-stamped (skill anti-pattern #1). Use the press release's own header date (e.g. "(October 29, 2025)") for `as_of_date`, NOT `date_iso`.
+3. **Prepared remarks PDF** — for color and EPS bridge components. Use only when (1) and (2) don't have the metric.
+4. **Earnings call transcript** (`earnings_transcripts`) — last resort. Transcripts have rounding artifacts and verbal imprecision. Numbers stated verbally that contradict the press release table are wrong.
+
+If a guidance event was first announced in a mid-quarter pre-announcement 8-K (e.g. MOH 2025-07-07 EPS cut announced before the 2025-07-23 Q2 release), `as_of_date` = the pre-announcement date, not the later transcript date.
+
 ### Phase 4: Normalize into the locked schema
 
 Map every extracted value to one row. Hold the line on the locked taxonomy:
@@ -178,6 +188,22 @@ Map every extracted value to one row. Hold the line on the locked taxonomy:
 - A "long-term 13-16% growth" goes to `Long-Term` / `Long-Term EPS Growth Target`
 - A suspension goes as 4 rows minimum: Total Revenue, Net EPS, Adjusted EPS, OCF — all `withdrawn` / `text`
 - Categorical drivers (e.g. "MA utilization acceleration as the cause of the cut") go as `Ratios` rows with `qualitative` / `text`, citing the chunk where management named the driver
+
+### Profitability metric category rule
+
+Adjusted EBITDA, Adjusted Gross Profit, Adjusted Net Income, GAAP Net Income, and any other consolidated profitability metric that is NOT denominated per share goes in `metric_category=Total`, NEVER in `EPS`. The `EPS` category is reserved for actual per-share metrics (Net EPS GAAP, Adjusted EPS, etc.). For EBITDA-anchored insurtechs (ALHC, OSCR, CLOV, etc.) you may have zero rows in the `EPS` category — that is correct.
+
+When the skill body mentions "treat EBITDA as the Adj EPS analog," that applies ONLY to Gate 3 spot-check selection (which row to verify), NOT to the category column.
+
+### Phase 4 vocab gate (programmatic)
+
+After normalizing into rows, before Gate 2, walk every row and assert:
+- `metric_category` ∈ the locked 10. If a value falls outside, do NOT invent a new category — use `Total` for non-EPS profitability (EBITDA, gross profit, net income), `Ratios` for ratios you can't otherwise place, etc.
+- `value_units` ∈ {`$ billions`, `$ per share`, `%`, `millions`, `text`}. NEVER use `$M`, `$B`, `USD_billions`, `percent`, `count`, `count_millions`, `note`, `members`, `days`, `clinics`, `states`, or any other freeform unit. If a metric naturally needs an out-of-vocab unit (e.g. Days Claims Payable in days), use `text` for `value_units` and put the magnitude with the unit word in `value_range` (e.g. `~44 days`).
+- `value_range` is in canonical encoding (`low - high` / `>= X` / `~X` / single / `withdrawn` / `qualitative`). No prose contamination. No `(at low-end)` qualifiers. No arrows. No parenthetical negatives — use `-X` not `(X)`.
+- `period` ∈ {`FY2024`, `FY2025`, ..., `Long-Term`, or quarterly forms `1Q25`/`2H25`}. Monthly snapshots (e.g. `Jan-2025`) are not guidance periods — drop those rows.
+
+Any row that fails the gate must be either fixed or dropped before Phase 5.
 
 ### ⛔ GATE 2: Coverage check
 
