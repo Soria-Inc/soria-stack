@@ -1,6 +1,6 @@
 ---
 name: test
-version: 1.2.0
+version: 1.2.1
 description: Use when testing Soria engineering changes, deciding which proof layer is credible, running E2E checks, or verifying MCP, DBOS, FastAPI, Turbopuffer, warehouse, scraper, extractor, or frontend behavior.
 allowed-tools:
   - Read
@@ -138,6 +138,19 @@ The app repo currently has several E2E families:
 
 Do not claim staging or preview E2E proof unless the target environment, auth,
 data seed, and runner are actually configured for that run.
+
+## Prod E2E discipline
+
+**Don't run chain E2E against prod.** Chain tests (scrape → extract → publish, parent-map runs, value-map runs) create test rows in whatever DB they hit. If that DB is prod, you've polluted prod with `e2e-pdf-12345`-style test data.
+
+The split:
+
+- **Read-only API tests on prod** — dashboard fetches, warehouse query reads, search queries — fine. Verify deploy health, no writes.
+- **Chain tests only on preview envs** — preview env has its own Neon branch + MotherDuck clone + GCS prefix; pollution stays isolated and gets reaped automatically.
+
+If you're about to invoke a workflow that *writes* (scraper_run, extraction_run, validation_run, value_manage map, parent_map_run, warehouse_publish), confirm the target environment is staging/preview, NOT prod. The MCP `database_mutate` and `warehouse_*` tools can hit prod when token-configured to — read what you're about to do twice.
+
+This is a recurring issue: daily E2E at 3am has historically created `e2e-*` rows in the prod DB. Linear ticket pending; the structural fix is to split the daily run into read-only-on-prod + chain-on-preview.
 
 ## TP/Search E2E
 
