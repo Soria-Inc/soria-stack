@@ -1,6 +1,6 @@
 ---
 name: test
-version: 1.1.0
+version: 1.2.0
 description: Use when testing Soria engineering changes, deciding which proof layer is credible, running E2E checks, or verifying MCP, DBOS, FastAPI, Turbopuffer, warehouse, scraper, extractor, or frontend behavior.
 allowed-tools:
   - Read
@@ -153,6 +153,24 @@ python scripts/seed-dev-tp.py --dry-run ...
 copies real vectors/content/metadata into the dev TP namespace without
 re-running Modal/LlamaParse. It does not copy Postgres rows and does not create
 namespace schema.
+
+## Pre-existing failures
+
+Before debugging any test failure, check if it's pre-existing — was the test already failing on main / merge-base before your change?
+
+```bash
+git stash && bash scripts/run-tests.sh tests/path/test_x.py -v -n0
+# or run the same test against origin/main directly
+```
+
+If the failure was already there:
+
+- **STOP debugging it.** Your change didn't break it. Don't go down a rabbit hole fixing something that was already broken.
+- **Report it separately** in your test evidence:
+  > "3 pre-existing failures (test_foo, test_bar, test_baz); 0 from this change"
+- **Optionally suggest `/ticket`** to file Linear issue(s) for the pre-existing failures — `/ticket` itself searches Linear for duplicates before filing, so just delegate to it. The user decides whether to actually file new tickets.
+
+Your job is "did my change break anything?", not "fix the entire testing situation." Pre-existing failures need their own investigation, not yours.
 
 ## Gotchas
 
