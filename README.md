@@ -318,3 +318,27 @@ The `/lessons` workflow:
 - `MCP_TOOL_MAP.md` maps Soria workflows to `mcp__soria__*` tools.
 - `plugins/soria-stack/references/codex-adapter.md` explains how the Codex
   wrappers translate the canonical Claude skill pack.
+
+
+## Auto-update
+
+`install.sh` registers a Claude Code SessionStart hook that runs
+`scripts/auto-update.sh` at most once per day. The hook:
+
+- Pulls latest from `origin/main` with `--ff-only` (won't clobber local commits)
+- If anything changed, re-runs `install.sh` to pick up new skills + rebuild
+  `/browse` if its source changed
+- Stamps `.last-auto-update` so it doesn't re-run on every session that day
+- Stays quiet on success; only prints when there's a real update or an error
+
+**Disable it:** remove the `auto-update.sh` entry from
+`~/.claude/settings.json` under `hooks.SessionStart`. Or chmod -x the script.
+
+**Force update now:** `~/.claude/skills/soria-stack/scripts/auto-update.sh`
+(delete `.last-auto-update` first if you want to bypass the daily gate).
+
+**On divergence** — if your local checkout has uncommitted changes or local
+commits that aren't on `origin/main`, the ff-only pull fails silently and the
+script writes the daily stamp anyway (so it doesn't retry every session).
+Resolve manually via `git status` + `git pull` when ready.
+

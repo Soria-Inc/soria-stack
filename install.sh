@@ -106,4 +106,58 @@ if [ -x "$SCRIPT_DIR/browse/build.sh" ]; then
   fi
 fi
 
+# Phase 4: register the auto-update hook in ~/.claude/settings.json so
+# soria-stack pulls latest at most once per day on Claude Code session start.
+# Idempotent — re-running install.sh won't double-register.
+AUTO_UPDATE="$SCRIPT_DIR/scripts/auto-update.sh"
+if [ -x "$AUTO_UPDATE" ]; then
+  if command -v python3 >/dev/null 2>&1; then
+    if python3 - "$AUTO_UPDATE" <<'PYEOF_INSTALL'
+import json, os, sys
+from pathlib import Path
+
+target = sys.argv[1]
+settings_path = Path.home() / ".claude" / "settings.json"
+settings_path.parent.mkdir(parents=True, exist_ok=True)
+
+if settings_path.exists():
+    with settings_path.open() as f:
+        try:
+            settings = json.load(f)
+        except json.JSONDecodeError:
+            print(f"WARNING: {settings_path} is not valid JSON; skipping hook install", file=sys.stderr)
+            sys.exit(1)
+else:
+    settings = {}
+
+hooks = settings.setdefault("hooks", {}).setdefault("SessionStart", [])
+
+# Idempotency: skip if any existing entry already references this exact script
+for entry in hooks:
+    for h in entry.get("hooks", []):
+        if h.get("command") == target:
+            print(f"  hook already registered for {target}")
+            sys.exit(0)
+
+hooks.append({
+    "matcher": "*",
+    "hooks": [{"type": "command", "command": target}]
+})
+
+with settings_path.open("w") as f:
+    json.dump(settings, f, indent=2)
+    f.write("\n")
+
+print(f"  registered SessionStart hook -> {target}")
+PYEOF_INSTALL
+    then
+      :
+    fi
+  else
+    echo "  WARNING: python3 not found; cannot register auto-update hook." >&2
+    echo "  Manually add this to ~/.claude/settings.json hooks.SessionStart:" >&2
+    echo "    {\"matcher\": \"*\", \"hooks\": [{\"type\": \"command\", \"command\": \"$AUTO_UPDATE\"}]}" >&2
+  fi
+fi
+
 echo "Done."
