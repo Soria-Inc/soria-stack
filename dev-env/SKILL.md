@@ -1,6 +1,6 @@
 ---
 name: dev-env
-version: 1.1.0
+version: 1.2.0
 description: Use when entering a Soria app worktree, starting or repairing the local backend/frontend stack, preparing runtime tests, or needing an isolated branch dev environment with Neon and MotherDuck.
 allowed-tools:
   - Read
@@ -32,6 +32,22 @@ It does not clone Turbopuffer. If the test touches chunks, search,
 `chunk_delete`, `patch_for_file`, embeddings, or TP cleanup, the relevant test
 flow may need the app repo helper script `scripts/seed-dev-tp.py` after the dev
 stack is running.
+
+## Preflight — what's running on this machine
+
+Before spinning up another dev stack, check what's already there. Port collisions, sibling worktrees with `make run-dev` going, MotherDuck clones bound to other envs — `make run-dev` will pick free ports automatically, but knowing what's running lets you decide whether to kill the other stack first or co-exist on different ports.
+
+```bash
+bash ~/.claude/skills/soria-stack/scripts/dev-env-preflight.sh
+```
+
+The script is read-only — it never kills processes or deletes anything, just reports. Output:
+
+- **Ports in use** across the Soria range (5173-5180 / 8900-8910) with the command + cwd that owns each
+- **Sibling worktrees** with running `make run-dev` (frontend.pid + backend.pid + branch + DB they're using)
+- **MotherDuck clone bindings** across all worktrees of the current repo, plus a duplicate-detection warning if two worktrees point at the same `MOTHERDUCK_STAGING_DATABASE`
+
+Read the output. If a sibling worktree is already running the stack you want, switch to it (`cd <worktree>` + `make logs`) instead of starting a new one. If a clone-name collision shows up, fix it before continuing — two worktrees writing to the same DB is the worst kind of silent data loss.
 
 ## Fast Path
 
