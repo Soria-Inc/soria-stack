@@ -96,7 +96,7 @@ Invoke skills by name, for example `/status` or `/dive`.
 
 | Skill | What it does |
 |-------|-------------|
-| `/browse` | Fast persistent Chromium (`$B`) for dive verification, bug repro, scraper recon, screenshots, console, and network checks. |
+| `/browse` | Fast persistent Chromium via the `agent-browser` CLI for dive verification, bug repro, scraper recon, screenshots, console, and network checks. Named sessions keep you signed in to the Soria app across calls and across Claude/Codex. |
 | `/env` | Preflight the Soria dev stack: MCP reachable, dev cert present, recent shared-state activity visible. |
 | `/tools` | Verify MCP tools and local dependencies such as `uv`, `node`, `dbt`, `make`, `git`, and `gh`. |
 | `/status` | Read-only inventory for a concept, scraper, group, warehouse table, or dive. |

@@ -21,18 +21,26 @@ That script:
 
 - symlinks `~/plugins/soria-stack` to this repo's plugin
 - adds or updates `~/.agents/plugins/marketplace.json`
-- builds the fast `/browse` runtime from `browse/build.sh` if needed
+- ensures the `agent-browser` CLI is installed for the `/browse` skill
 
 ## `/browse`
 
-The Codex `/browse` skill prefers the fast `$B` runtime from the upstream repo:
+The Codex `/browse` skill uses the `agent-browser` CLI
+(https://agent-browser.dev). Install it once with:
 
 ```bash
-browse/vendor/dist/browse
+brew install agent-browser            # or: npm i -g agent-browser
+agent-browser install                 # downloads Chrome on first use
 ```
 
-If `$B` is unavailable or cannot start in the current sandbox, the plugin ships
-Playwright MCP as a slower fallback.
+`agent-browser` runs identically in Claude Code and Codex CLI. Named sessions
+(`--session-name <name>` or `AGENT_BROWSER_SESSION_NAME=<name>`) persist
+cookies and localStorage under `~/.agent-browser/`, so a Soria login from
+Claude is reusable from Codex with the same session name.
+
+Do not use `mcp__chrome-devtools__*`, Playwright MCP, or the legacy `$B`
+binary (`browse/vendor/dist/browse`) — `agent-browser` is the only sanctioned
+browser runtime for Soria work.
 
 ## Engineering Skills
 

@@ -114,10 +114,11 @@ Only call it missing data after the selected catalog is proven absent or empty.
 
 ## Hand Off To Browse
 
-After setup, hard-refresh existing browser tabs. Use `browse` for cookie
-import, manual Clerk fallback, screenshots, console/network capture, and
-interaction testing. If `$B` shows sign-in after cookie import, follow
-`browse` auth rules rather than restarting Vite again.
+After setup, hard-refresh existing browser tabs. Use `browse` (the
+`agent-browser` CLI) for Clerk login, screenshots, console/network capture,
+and interaction testing — named sessions keep you signed in. If
+`agent-browser` shows the sign-in form, run the one-time login flow in
+`browse` rather than restarting Vite again.
 
 ## Failure Modes
 
@@ -128,5 +129,5 @@ interaction testing. If `$B` shows sign-in after cookie import, follow
 - `No Rows To Show`: suspect wrong catalog/env first, especially
   `VITE_MOTHERDUCK_STAGING=my_db` or a local API proxy to an older checkout.
 - `/api/runtime` 404: not always fatal in remote-prod API mode.
-- API 401: auth/session problem; use `browse` cookie import or manual Soria
-  login fallback.
+- API 401: auth/session problem; run the one-time `browse` login flow to
+  refresh the session cookies.

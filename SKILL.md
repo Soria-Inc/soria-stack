@@ -17,8 +17,9 @@ description: |
   /dashboard-review (adversarial browser QA against dev.soriaanalytics.com),
   /diagnose (failure triage), /ticket (file structured tickets mid-session),
   /promote (warehouse_diff + warehouse_promote + PR + CI), /newsroom (news
-  pipeline ops), /lessons (retrospective), /browse (persistent headless
-  Chromium for verification), plus engineering skills /dev-env, /dev-dives,
+  pipeline ops), /lessons (retrospective), /browse (persistent Chromium via
+  the `agent-browser` CLI for verification, screenshots, and Soria-app
+  login), plus engineering skills /dev-env, /dev-dives,
   /test, and /code-review for branch-local app work, dev HTTPS dive frontend
   repair, test evidence, and Soria-specific code review.
   Suggest the right skill by stage: starting a session → /tools;
@@ -80,7 +81,7 @@ Engineering skills operate inside app repo worktrees and follow that repo's
 | Promoting to production (`git push` + PR) | `/promote` |
 | Working with the news pipeline | `/newsroom` |
 | Reviewing recent work for lessons | `/lessons` |
-| Needing a persistent browser (repro, recon) | `/browse` |
+| Needing a persistent browser (repro, recon, Soria-app login) | `/browse` |
 | Entering or repairing a branch-local app dev environment | `/dev-env` |
 | Repairing `dev.soriaanalytics.com` dive frontend/runtime alignment | `/dev-dives` |
 | Testing Soria engineering changes or choosing E2E proof | `/test` |

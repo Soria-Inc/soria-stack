@@ -43,17 +43,14 @@ Browser rules:
 - Keep live browser concurrency modest. Parallelism belongs mostly at the
   screenshot-analysis level, not by opening a large number of pages/tabs.
 - Save screenshots and a small machine-readable run report under
-  `.dev/playwright/<review-name>/` when working in a repo, or under the
+  `.dev/browse/<review-name>/` when working in a repo, or under the
   artifact directory named below when not.
 
-Use the local browser runtime that is available in the agent environment:
-
-- In Codex, prefer plain headless Playwright for navigation, waits,
-  screenshots, console, and network evidence.
-- In Claude environments with `/browse`, use `/browse` if it is the configured
-  browser runtime.
-- Do not turn this skill into browser setup debugging. If auth/runtime is
-  broken, report `BLOCKED` and the missing condition.
+Use `/browse` for the browser runtime in both Claude and Codex. It wraps
+the `agent-browser` CLI, which is the only sanctioned runtime — do not
+fall back to Playwright MCP, `mcp__chrome-devtools__*`, or the legacy `$B`
+binary. Do not turn this skill into browser setup debugging. If auth or
+runtime is broken, report `BLOCKED` and the missing condition.
 
 For staging review, run preflight if the repo provides it:
 

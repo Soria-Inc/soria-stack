@@ -90,14 +90,22 @@ os.replace(tmp, path)
 print(f"Updated marketplace: {path}")
 PY
 
-if [ -x "$SCRIPT_DIR/browse/build.sh" ]; then
-  browse_bin="$SCRIPT_DIR/browse/vendor/dist/browse"
-  src_newer="$(find "$SCRIPT_DIR/browse/vendor/src" -type f -newer "$browse_bin" 2>/dev/null | head -1 || true)"
-  if [ ! -x "$browse_bin" ] || [ -n "$src_newer" ]; then
-    echo
-    echo "Building fast /browse runtime..."
-    "$SCRIPT_DIR/browse/build.sh"
+if ! command -v agent-browser >/dev/null 2>&1; then
+  echo
+  echo "Installing agent-browser CLI for /browse..."
+  if command -v brew >/dev/null 2>&1; then
+    brew install agent-browser
+  elif command -v npm >/dev/null 2>&1; then
+    npm install -g agent-browser
+  else
+    echo "WARNING: neither brew nor npm found. /browse will not work until you install agent-browser." >&2
+    echo "See https://agent-browser.dev for install options." >&2
   fi
+fi
+
+if command -v agent-browser >/dev/null 2>&1; then
+  agent-browser install >/dev/null 2>&1 || true
+  echo "agent-browser ready: $(command -v agent-browser)"
 fi
 
 echo

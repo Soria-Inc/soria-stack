@@ -88,22 +88,25 @@ done
 echo ""
 echo "Summary: $created created, $updated updated, $removed removed, $skipped skipped"
 
-# Phase 3: build the /browse skill's vendored binary if needed.
-# The browse binary is a compiled Bun CLI (src lives in browse/vendor/).
-# It's idempotent — skips the build if dist/browse is newer than src/.
-if [ -x "$SCRIPT_DIR/browse/build.sh" ]; then
-  browse_bin="$SCRIPT_DIR/browse/vendor/dist/browse"
-  src_newest="$(find "$SCRIPT_DIR/browse/vendor/src" -type f -newer "$browse_bin" 2>/dev/null | head -1 || true)"
-  if [ ! -x "$browse_bin" ] || [ -n "$src_newest" ]; then
-    echo ""
-    echo "Building /browse binary (bun + playwright)..."
-    if "$SCRIPT_DIR/browse/build.sh"; then
-      echo "  built: $browse_bin"
-    else
-      echo "  WARNING: /browse build failed. /browse skill will not work until built." >&2
-      echo "  Fix and re-run: $SCRIPT_DIR/browse/build.sh" >&2
-    fi
+# Phase 3: ensure the agent-browser CLI is installed for the /browse skill.
+# agent-browser replaces the legacy vendored $B binary. Browser-download
+# (agent-browser install) is a no-op when Chrome is already cached.
+if ! command -v agent-browser >/dev/null 2>&1; then
+  echo ""
+  echo "Installing agent-browser CLI for /browse..."
+  if command -v brew >/dev/null 2>&1; then
+    brew install agent-browser
+  elif command -v npm >/dev/null 2>&1; then
+    npm install -g agent-browser
+  else
+    echo "  WARNING: neither brew nor npm found. /browse will not work until you install agent-browser." >&2
+    echo "  See https://agent-browser.dev for install options." >&2
   fi
+fi
+
+if command -v agent-browser >/dev/null 2>&1; then
+  agent-browser install >/dev/null 2>&1 || true
+  echo "agent-browser ready: $(command -v agent-browser)"
 fi
 
 # Phase 4: register the auto-update hook in ~/.claude/settings.json so

@@ -128,10 +128,11 @@ is absent or empty in the selected catalog.
 After runtime setup:
 
 - hard-refresh any already-open browser tab so it reloads Vite env modules
-- use `/browse` for cookie import, manual Clerk fallback, screenshots,
-  console/network capture, and interaction testing
-- if `$B` shows sign-in after cookie import, follow `/browse` auth rules
-  rather than restarting Vite again
+- use `/browse` for Clerk login, screenshots, console/network capture, and
+  interaction testing — `/browse` wraps `agent-browser` and keeps you
+  signed in via named sessions
+- if `agent-browser` shows the sign-in form, run the one-time login flow
+  in `/browse` rather than restarting Vite again
 
 ## Common Failure Modes
 
@@ -143,5 +144,5 @@ After runtime setup:
   `VITE_MOTHERDUCK_STAGING=my_db` or a local API proxy to an older checkout.
 - **`/api/runtime` returns 404**: not always fatal in remote-prod API mode;
   older remote backends may not expose that diagnostic route.
-- **API returns 401**: auth/session problem. Use `/browse` cookie import or
-  manual Soria login fallback.
+- **API returns 401**: auth/session problem. Run the one-time `/browse`
+  login flow to refresh the session cookies.
